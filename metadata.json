@@ -1,0 +1,5 @@
+{
+  "name": "Generador de Colillas de Pago",
+  "description": "Aplicación para cargar clientes desde Excel y generar comprobantes de pago en PDF estandarizados.",
+  "requestFramePermissions": []
+}
