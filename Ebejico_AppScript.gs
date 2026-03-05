@@ -30,6 +30,7 @@ function doPost(e) {
 
     var colPolizaIdx = -1;
     var colNombreIdx = -1;
+    var colObsIdx = -1;
 
     // Buscar qué columna es la póliza y cuál el nombre
     for (var i = 0; i < headers.length; i++) {
@@ -43,6 +44,11 @@ function doPost(e) {
       // Columna Nombre en Ebéjico: "Apellidos y Nombre"
       if (h.includes("nombre") || h.includes("apellido") || h === "apellidos y nombre") {
         colNombreIdx = i;
+      }
+
+      // Columna Observaciones
+      if (h.includes("obs") || h.includes("nota")) {
+        colObsIdx = i;
       }
     }
 
@@ -112,13 +118,17 @@ function doPost(e) {
           }
         }
         
-        if (colMonthIdx != -1) {
-          // Actualizar la celda exacta
+        if (colMonthIdx != -1 && newValue !== undefined) {
+          // Actualizar la celda exacta del mes
           sheet.getRange(rowFoundIdx, colMonthIdx).setValue(newValue);
-          return response("OK: Pago actualizado en Ebéjico para el mes " + targetMonth);
-        } else {
-          return response("Error: Columna del mes '" + targetMonth + "' no encontrada en el Excel.");
         }
+
+        // Actualizar observaciones si vienen en el payload
+        if (colObsIdx != -1 && data.observaciones !== undefined) {
+          sheet.getRange(rowFoundIdx, colObsIdx + 1).setValue(data.observaciones);
+        }
+
+        return response("OK: Datos del cliente actualizados en Ebéjico.");
       }
     }
   } catch (err) {

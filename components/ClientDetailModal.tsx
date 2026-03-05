@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { X, User, Calendar, FileText, DollarSign, CloudUpload, RefreshCw, CheckCircle2, AlertTriangle, Loader2, Trash2, ShieldCheck } from 'lucide-react';
+import { X, User, Calendar, FileText, DollarSign, RefreshCw, CheckCircle2, AlertTriangle, Loader2, Trash2, ShieldCheck } from 'lucide-react';
 import { Client } from '../types';
 import { updatePaymentInCloud, syncActionWithCloud } from '../services/googleSheetsBridge';
 
@@ -30,6 +30,7 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({
   const [syncStatus, setSyncStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [errorMsg, setErrorMsg] = useState('');
   const [modifiedMonths, setModifiedMonths] = useState<Set<string>>(new Set());
+  const [isObsModified, setIsObsModified] = useState(false);
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [validationCode, setValidationCode] = useState('');
@@ -41,6 +42,7 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({
       setSyncStatus('idle');
       setErrorMsg('');
       setModifiedMonths(new Set());
+      setIsObsModified(false);
       setIsSyncing(false);
       setCurrentSyncingMonth(null);
       setShowDeleteConfirm(false);
@@ -70,10 +72,12 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({
       return;
     }
 
-    if (modifiedMonths.size > 0) {
-      setIsSyncing(true);
-      setSyncStatus('idle');
-      try {
+    setIsSyncing(true);
+    setSyncStatus('idle');
+
+    try {
+      // 1. Sincronizar meses modificados
+      if (modifiedMonths.size > 0) {
         for (const month of Array.from(modifiedMonths) as string[]) {
           setCurrentSyncingMonth(month);
           await updatePaymentInCloud(scriptUrl, {
@@ -81,23 +85,28 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({
             month: month,
             value: formData.payments[month] || 0
           });
-          // Pequeña pausa para no saturar Google Apps Script
           await new Promise(r => setTimeout(r, 600));
         }
-        setSyncStatus('success');
-        // Esperamos un poco para que el usuario vea el éxito antes de cerrar
-        setTimeout(() => {
-          onSave(formData);
-          onClose();
-        }, 1500);
-      } catch (err: any) {
-        setSyncStatus('error');
-        setErrorMsg(err.message || "Error al sincronizar con Excel.");
-        setIsSyncing(false);
       }
-    } else {
-      onSave(formData);
-      onClose();
+
+      // 2. Sincronizar observaciones
+      if (isObsModified) {
+        setCurrentSyncingMonth("Observaciones");
+        await updatePaymentInCloud(scriptUrl, {
+          poliza: formData.numeroContrato,
+          observaciones: formData.observaciones
+        });
+      }
+
+      setSyncStatus('success');
+      setTimeout(() => {
+        onSave(formData);
+        onClose();
+      }, 1500);
+    } catch (err: any) {
+      setSyncStatus('error');
+      setErrorMsg(err.message || "Error al sincronizar con Excel.");
+      setIsSyncing(false);
     }
   };
 
@@ -106,7 +115,6 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({
       alert("Código de validación incorrecto");
       return;
     }
-
     if (!scriptUrl) {
       alert("Configura la URL del Script primero");
       return;
@@ -229,6 +237,27 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({
                   </div>
                 ))}
               </div>
+            </section>
+
+            <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+              <h3 className="text-xs font-black text-slate-400 uppercase flex items-center gap-2 mb-4">
+                <FileText className="h-4 w-4" /> Observaciones del Cliente
+              </h3>
+              <textarea
+                value={formData.observaciones || ''}
+                onChange={(e) => {
+                  setFormData({ ...formData, observaciones: e.target.value });
+                  setIsObsModified(true);
+                  if (syncStatus !== 'idle') setSyncStatus('idle');
+                }}
+                rows={3}
+                placeholder="Notas adicionales, acuerdos de pago o recordatorios..."
+                disabled={isSyncing}
+                className="w-full p-4 border border-slate-100 rounded-xl bg-slate-50 text-sm focus:outline-none focus:ring-2 focus:ring-blue-100 transition-all resize-none"
+              />
+              <p className="mt-2 text-[10px] text-slate-400 italic">
+                Aparecerán en el campo "Observaciones" de la colilla de pago.
+              </p>
             </section>
           </form>
         </div>

@@ -14,6 +14,7 @@ function doPost(e) {
     
     var colPolizaIdx = -1;
     var colNombreIdx = -1;
+    var colObsIdx = -1;
 
     for (var i = 0; i < headers.length; i++) {
       var h = String(headers[i]).toLowerCase().trim();
@@ -28,6 +29,11 @@ function doPost(e) {
       // Identificar columna Nombre (Heliconia usa 'nombre y apellido')
       if (h.includes("nombre") || h.includes("apellido") || h.includes("cliente")) {
         colNombreIdx = i;
+      }
+
+      // Identificar columna Observaciones
+      if (h.includes("obs") || h.includes("nota")) {
+        colObsIdx = i;
       }
     }
 
@@ -68,22 +74,29 @@ function doPost(e) {
         var newValue = data.value;
         var colMonthIdx = -1;
         
-        for (var k = 0; k < headers.length; k++) {
-          var hMonth = String(headers[k]).toLowerCase().trim();
-          // Soporte para variaciones como 'junio'/'jun' o 'julio'/'jul'
-          if (hMonth.startsWith(targetMonth.toLowerCase()) || 
-              (targetMonth.toLowerCase() === "jun" && hMonth === "junio") ||
-              (targetMonth.toLowerCase() === "jul" && hMonth === "julio")) {
-            colMonthIdx = k + 1;
-            break;
+        if (targetMonth) {
+          for (var k = 0; k < headers.length; k++) {
+            var hMonth = String(headers[k]).toLowerCase().trim();
+            // Soporte para variaciones como 'junio'/'jun' o 'julio'/'jul'
+            if (hMonth.startsWith(targetMonth.toLowerCase()) || 
+                (targetMonth.toLowerCase() === "jun" && hMonth === "junio") ||
+                (targetMonth.toLowerCase() === "jul" && hMonth === "julio")) {
+              colMonthIdx = k + 1;
+              break;
+            }
           }
         }
         
-        if (colMonthIdx != -1) {
+        if (colMonthIdx != -1 && newValue !== undefined) {
           sheet.getRange(rowFoundIdx, colMonthIdx).setValue(newValue);
-          return response("OK: Pago actualizado en Heliconia");
         }
-        return response("Error: Mes '" + targetMonth + "' no encontrado");
+
+        // Actualizar observaciones si vienen en el payload
+        if (colObsIdx != -1 && data.observaciones !== undefined) {
+          sheet.getRange(rowFoundIdx, colObsIdx + 1).setValue(data.observaciones);
+        }
+
+        return response("OK: Datos actualizados en Heliconia");
       }
     }
   } catch (err) {

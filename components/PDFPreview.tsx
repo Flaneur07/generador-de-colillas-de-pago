@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Client } from '../types';
-import { Download, Printer, Calendar, Mail } from 'lucide-react';
+import { Download, Printer, Calendar } from 'lucide-react';
 import { formatCurrency, numberToWords } from '../utils/currency';
-import { generatePaymentSlip } from '../services/pdfService';
-import { EmailModal } from './EmailModal';
+import { generatePaymentSlip, printPaymentSlip } from '../services/pdfService';
 import { SiteConfig } from '../config/siteConfigs';
 
 interface PDFPreviewProps {
@@ -15,14 +14,15 @@ const months = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "
 
 export const PDFPreview: React.FC<PDFPreviewProps> = ({ client, siteConfig }) => {
   const [selectedMonth, setSelectedMonth] = useState<string>("");
+  const [isAnualSelected, setIsAnualSelected] = useState<boolean>(false);
   const [receiptNumber, setReceiptNumber] = useState<string>("00000");
-  const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
 
   useEffect(() => {
     if (client) {
       const currentMonthIdx = new Date().getMonth();
       const currentMonthKey = months[currentMonthIdx];
       setSelectedMonth(currentMonthKey);
+      setIsAnualSelected(false);
       // Generate a random-ish starting number if empty
       if (!receiptNumber || receiptNumber === "00000") {
         const randomNum = Math.floor(10000 + Math.random() * 90000).toString();
@@ -45,8 +45,18 @@ export const PDFPreview: React.FC<PDFPreviewProps> = ({ client, siteConfig }) =>
     );
   }
 
-  const selectedValue = client.payments?.[selectedMonth] || 0;
-  const selectedConcept = `Mensualidad ${selectedMonth} 2026`;
+  const isClientFullYear = client.payments
+    ? months.slice(0, 11).every(m => (client.payments?.[m] || 0) > 0)
+    : false;
+
+  const selectedValue = isAnualSelected
+    ? months.reduce((sum, m) => sum + (client.payments?.[m] || 0), 0)
+    : (client.payments?.[selectedMonth] || 0);
+
+  const selectedConcept = isAnualSelected
+    ? "PAGO PERIODICIDAD ANUAL - 2026"
+    : `Mensualidad ${selectedMonth} 2026`;
+
   const today = new Date().toLocaleDateString('es-CO');
 
   const handleDownload = () => {
@@ -56,6 +66,15 @@ export const PDFPreview: React.FC<PDFPreviewProps> = ({ client, siteConfig }) =>
       concepto: selectedConcept
     };
     generatePaymentSlip(tempClient, siteConfig, receiptNumber);
+  };
+
+  const handlePrint = () => {
+    const tempClient: Client = {
+      ...client,
+      valorCompra: selectedValue,
+      concepto: selectedConcept
+    };
+    printPaymentSlip(tempClient, siteConfig, receiptNumber);
   };
 
   const displayObs = client.observaciones
@@ -70,12 +89,12 @@ export const PDFPreview: React.FC<PDFPreviewProps> = ({ client, siteConfig }) =>
             <h2 className="text-sm font-bold text-slate-700 uppercase tracking-wider">Configurar Recibo</h2>
             <div className="flex gap-2">
               <button
-                onClick={() => setIsEmailModalOpen(true)}
+                onClick={handlePrint}
                 className="flex items-center gap-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold py-2 px-3 rounded shadow transition-colors"
-                title="Enviar por Gmail"
+                title="Imprimir colilla"
               >
-                <Mail className="h-4 w-4" />
-                <span className="hidden sm:inline">ENVIAR</span>
+                <Printer className="h-4 w-4" />
+                <span className="hidden sm:inline">IMPRIMIR</span>
               </button>
               <button
                 onClick={handleDownload}
@@ -114,12 +133,15 @@ export const PDFPreview: React.FC<PDFPreviewProps> = ({ client, siteConfig }) =>
             {months.map((m) => {
               const val = client.payments?.[m] || 0;
               const hasValue = val > 0;
-              const isSelected = selectedMonth === m;
+              const isSelected = !isAnualSelected && selectedMonth === m;
 
               return (
                 <button
                   key={m}
-                  onClick={() => setSelectedMonth(m)}
+                  onClick={() => {
+                    setSelectedMonth(m);
+                    setIsAnualSelected(false);
+                  }}
                   className={`
                     px-1 py-1.5 rounded text-[10px] border transition-all flex flex-col items-center justify-center
                     ${isSelected
@@ -135,6 +157,23 @@ export const PDFPreview: React.FC<PDFPreviewProps> = ({ client, siteConfig }) =>
                 </button>
               );
             })}
+
+            {/* Anual Option */}
+            <button
+              onClick={() => setIsAnualSelected(true)}
+              className={`
+                px-1 py-1.5 rounded text-[10px] border transition-all flex flex-col items-center justify-center col-span-2
+                ${isAnualSelected
+                  ? 'bg-amber-600 text-white border-amber-600 shadow-md ring-2 ring-amber-100'
+                  : isClientFullYear
+                    ? 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100'
+                    : 'bg-slate-50 text-slate-300 border-slate-100 opacity-50'
+                }
+              `}
+            >
+              <span className="font-black">TODO EL AÑO</span>
+              {isClientFullYear && <span className="text-[7px] font-bold">CALIFICADO</span>}
+            </button>
           </div>
         </div>
 
@@ -230,15 +269,6 @@ export const PDFPreview: React.FC<PDFPreviewProps> = ({ client, siteConfig }) =>
         </div>
       </div>
 
-      <EmailModal
-        isOpen={isEmailModalOpen}
-        onClose={() => setIsEmailModalOpen(false)}
-        client={client}
-        selectedValue={selectedValue}
-        selectedMonth={selectedMonth}
-        siteConfig={siteConfig}
-        receiptNumber={receiptNumber}
-      />
     </>
   );
 };

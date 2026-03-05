@@ -5,6 +5,7 @@ export interface CloudActionParams {
   nombre?: string;
   month?: string;
   value?: number;
+  observaciones?: string;
 }
 
 export const syncActionWithCloud = async (scriptUrl: string, params: CloudActionParams) => {
@@ -37,7 +38,7 @@ export const syncActionWithCloud = async (scriptUrl: string, params: CloudAction
     });
 
     clearTimeout(timeoutId);
-    
+
     // Con no-cors no podemos leer la respuesta, pero si no lanza error, el paquete salió.
     return { success: true };
   } catch (error: any) {
@@ -50,11 +51,12 @@ export const syncActionWithCloud = async (scriptUrl: string, params: CloudAction
   }
 };
 
-export const updatePaymentInCloud = async (scriptUrl: string, params: { poliza: string | number, month: string, value: number }) => {
+export const updatePaymentInCloud = async (scriptUrl: string, params: { poliza: string | number, month?: string, value?: number, observaciones?: string }) => {
   return syncActionWithCloud(scriptUrl, {
     action: 'update',
     poliza: params.poliza,
     month: params.month,
-    value: params.value
+    value: params.value,
+    observaciones: params.observaciones
   });
 };

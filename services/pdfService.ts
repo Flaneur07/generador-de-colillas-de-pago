@@ -171,6 +171,29 @@ export const generatePaymentSlip = async (client: Client, siteConfig: SiteConfig
   doc.save(`Recibo_${safeName}.pdf`);
 };
 
+export const printPaymentSlip = async (client: Client, siteConfig: SiteConfig, receiptNumber?: string) => {
+  const doc = await createPDFDoc(client, siteConfig, receiptNumber);
+
+  // Use autoPrint and output to blob url for best compatibility with print dialogs
+  const blob = doc.output('blob');
+  const url = URL.createObjectURL(blob);
+
+  // Create an iframe to handle the printing without redirecting the main page
+  const iframe = document.createElement('iframe');
+  iframe.style.display = 'none';
+  iframe.src = url;
+  document.body.appendChild(iframe);
+
+  iframe.onload = () => {
+    iframe.contentWindow?.print();
+    // Clean up after print dialog is closed (or at least triggered)
+    setTimeout(() => {
+      document.body.removeChild(iframe);
+      URL.revokeObjectURL(url);
+    }, 1000);
+  };
+};
+
 export const getPaymentSlipBase64 = async (client: Client, siteConfig: SiteConfig, receiptNumber?: string): Promise<string> => {
   const doc = await createPDFDoc(client, siteConfig, receiptNumber);
   const dataUri = doc.output('datauristring');

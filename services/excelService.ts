@@ -51,6 +51,7 @@ const processWorksheet = (sheet: XLSX.WorkSheet): Client[] => {
   const headers = data[headerRowIdx].map(normalize);
   const idxPoliza = headers.findIndex(h => h.includes("pol") || h.includes("no.") || h.includes("contrato"));
   const idxNombre = headers.findIndex(h => h.includes("apellido") || h.includes("nombre"));
+  const idxObs = headers.findIndex(h => h.includes("obs") || h.includes("nota"));
 
   const monthMap = [
     { key: "Ene", variations: ["ene", "enero"] },
@@ -111,7 +112,7 @@ const processWorksheet = (sheet: XLSX.WorkSheet): Client[] => {
       valorCompra: valor,
       concepto: concepto,
       numeroContrato: poliza,
-      observaciones: "",
+      observaciones: String(getVal(idxObs)).trim(),
       payments: payments
     });
   }
