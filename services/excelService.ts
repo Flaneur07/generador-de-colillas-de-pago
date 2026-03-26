@@ -1,6 +1,6 @@
 
 import * as XLSX from 'xlsx';
-import { Client } from '../types';
+import { Client, Beneficiary } from '../types';
 
 // ID de la nueva hoja de cálculo proporcionada por el usuario
 export const DEFAULT_SHEET_ID = "1MULokQ8jhbjK1Fi1HpWv7YQOh-9yuGpoifHRVvAenu0";
@@ -32,7 +32,7 @@ const getCurrentMonthKey = (): string => {
 };
 
 const processWorksheet = (sheet: XLSX.WorkSheet): Client[] => {
-  const data = XLSX.utils.sheet_to_json<any[]>(sheet, { header: 1, defval: "" });
+  const data = XLSX.utils.sheet_to_json<any[]>(sheet, { header: 1, defval: "", raw: false });
   if (!data || data.length === 0) return [];
 
   let headerRowIdx = -1;
@@ -137,8 +137,85 @@ export const parseExcelFile = async (file: File | Blob): Promise<Client[]> => {
   });
 };
 
+export const fetchBeneficiaries = async (sheetId: string): Promise<Beneficiary[]> => {
+  // Usamos el GID directo y evitamos la caché
+  const hgid = "372521735"; 
+  const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&gid=${hgid}&_cb=${Date.now()}`;
+
+  try {
+    const response = await fetch(url);
+    if (!response.ok) return [];
+    const text = await response.text();
+
+    if (text.includes("<!doctype html>") || text.includes("google.com/accounts")) {
+      console.warn("[Beneficiaries] Acceso denegado a la hoja de beneficiarios.");
+      return [];
+    }
+
+    const workbook = XLSX.read(text, { type: 'string', raw: true });
+    const sheetName = workbook.SheetNames[0];
+    if (!sheetName) return [];
+
+    const sheet = workbook.Sheets[sheetName];
+    const data = XLSX.utils.sheet_to_json<any[]>(sheet, { header: 1, defval: "", raw: false });
+    if (!data || data.length === 0) return [];
+
+    // Search for headers
+    let headerRowIdx = -1;
+    let idxContrato = -1, idxNombre = -1, idxFecha = -1, idxEstado = -1;
+
+    for (let i = 0; i < Math.min(data.length, 10); i++) {
+      const row = data[i].map((s: any) => String(s || "").toLowerCase());
+      idxContrato = row.findIndex((h: string) => h.includes("contrat") || h.includes("poliza") || h.includes("póliza"));
+      idxNombre = row.findIndex((h: string) => h.includes("nombre") || h.includes("apellido") || h.includes("beneficiario"));
+      idxFecha = row.findIndex((h: string) => h.includes("nacimien") || h.includes("fecha") || h.includes("f.n"));
+      idxEstado = row.findIndex((h: string) => h.includes("estado"));
+
+      if (idxContrato !== -1 && idxNombre !== -1) {
+        headerRowIdx = i;
+        break;
+      }
+    }
+
+    if (headerRowIdx === -1) {
+       headerRowIdx = 0;
+       const row0 = data[0].map((s: any) => String(s || "").toLowerCase());
+       idxContrato = row0.findIndex((h: string) => h.includes("contrato")); 
+       idxNombre = row0.findIndex((h: string) => h.includes("nombre") || h.includes("apellido"));
+    }
+
+    const beneficiaries: Beneficiary[] = [];
+    for (let i = headerRowIdx + 1; i < data.length; i++) {
+      const row = data[i];
+      if (!row || row.length === 0) continue;
+
+      const contrato = String(row[idxContrato] || "").trim();
+      const nombre = String(row[idxNombre] || "").trim();
+      if (!nombre || !contrato) continue;
+
+      beneficiaries.push({
+        id: `ben-${i}-${Date.now()}`,
+        numeroContrato: contrato,
+        nombre: nombre,
+        fechaNacimiento: String(idxFecha !== -1 ? row[idxFecha] : ""),
+        estado: (idxEstado !== -1 && String(row[idxEstado] || "").toLowerCase().includes("inactivo")) ? 'Inactivo' : 'Activo'
+      });
+    }
+
+    return beneficiaries;
+  } catch (error) {
+    console.error("Error fetching beneficiaries:", error);
+    return [];
+  }
+};
+
 export const syncWithGoogleSheets = async (sheetId: string, targetSheetName: string): Promise<Client[]> => {
-  const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(targetSheetName)}`;
+  // Evitamos caché en la petición
+  let url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(targetSheetName)}&_cb=${Date.now()}`;
+  
+  if (sheetId === "1LclqwFBtLqIW2KOq5pWXYY2EIqR95R6IxIjQJLt4X-k" && targetSheetName.includes("2026")) {
+    url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&gid=1985605679&_cb=${Date.now()}`;
+  }
 
   try {
     const response = await fetch(url);
@@ -149,11 +226,29 @@ export const syncWithGoogleSheets = async (sheetId: string, targetSheetName: str
       throw new Error("La hoja de cálculo es privada o no existe.");
     }
 
-    const workbook = XLSX.read(text, { type: 'string' });
+    const workbook = XLSX.read(text, { type: 'string', raw: true });
     const sheetName = workbook.SheetNames[0];
     if (!sheetName) throw new Error(`No se pudo leer la hoja.`);
 
-    return processWorksheet(workbook.Sheets[sheetName]);
+    const clients = processWorksheet(workbook.Sheets[sheetName]);
+
+    // Relacionar beneficiarios
+    if (sheetId === "1LclqwFBtLqIW2KOq5pWXYY2EIqR95R6IxIjQJLt4X-k") {
+      const beneficiaries = await fetchBeneficiaries(sheetId);
+      
+      clients.forEach(client => {
+        const clientContrato = String(client.numeroContrato).trim();
+        const clientBaseContrato = clientContrato.split('-')[0].trim();
+        
+        client.beneficiaries = beneficiaries.filter(b => {
+          const benFullContrato = String(b.numeroContrato).trim();
+          const benBaseContrato = benFullContrato.split('-')[0].trim();
+          return benBaseContrato === clientBaseContrato && benFullContrato !== clientContrato;
+        });
+      });
+    }
+
+    return clients;
   } catch (error: any) {
     throw new Error(error.message || "Error al sincronizar con Google Sheets.");
   }

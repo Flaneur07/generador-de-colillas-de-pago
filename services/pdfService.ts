@@ -2,6 +2,7 @@ import jsPDF from 'jspdf';
 import { Client } from '../types';
 import { SiteConfig } from '../config/siteConfigs';
 import { formatCurrency, numberToWords } from '../utils/currency';
+import { LOGO_BASE64 } from '../assets/logo';
 
 // Internal function to create the PDF document structure
 const createPDFDoc = async (client: Client, siteConfig: SiteConfig, receiptNumber?: string): Promise<jsPDF> => {
@@ -24,7 +25,7 @@ const createPDFDoc = async (client: Client, siteConfig: SiteConfig, receiptNumbe
   // --- Header ---
   // A. Logo (Left)
   try {
-    doc.addImage('/logo.png', 'PNG', marginX, 10, 45, 22);
+    doc.addImage(LOGO_BASE64, 'PNG', marginX, 10, 45, 22);
   } catch (e) {
     console.warn("Logo not found", e);
     doc.setTextColor(34, 139, 34);

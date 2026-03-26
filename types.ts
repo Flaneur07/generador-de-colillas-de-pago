@@ -1,3 +1,11 @@
+export interface Beneficiary {
+  id: string; // Internal id for tracking
+  numeroContrato: string;
+  nombre: string;
+  fechaNacimiento: string;
+  estado: 'Activo' | 'Inactivo';
+}
+
 export interface Client {
   id: string; // Generated unique ID for internal tracking
   nombre: string;
@@ -9,6 +17,7 @@ export interface Client {
   numeroContrato: string | number;
   observaciones: string;
   payments: Record<string, number>; // Stores values for 'ene', 'feb', etc.
+  beneficiaries?: Beneficiary[];
 }
 
 export interface RawExcelRow {

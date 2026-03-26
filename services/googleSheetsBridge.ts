@@ -1,11 +1,14 @@
 
 export interface CloudActionParams {
-  action: 'update' | 'create' | 'delete';
+  action: 'update' | 'create' | 'delete' | 'add_beneficiary' | 'delete_beneficiary' | 'toggle_beneficiary';
   poliza: string | number;
   nombre?: string;
   month?: string;
   value?: number;
   observaciones?: string;
+  fechaNacimiento?: string;
+  estado?: string;
+  beneficiarioContrato?: string;
 }
 
 export const syncActionWithCloud = async (scriptUrl: string, params: CloudActionParams) => {

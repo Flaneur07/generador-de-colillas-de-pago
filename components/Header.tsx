@@ -1,6 +1,7 @@
 
 import React from 'react';
-import { FileText, BarChart3, UserPlus, LogOut } from 'lucide-react';
+import { BarChart3, UserPlus, LogOut } from 'lucide-react';
+import { LOGO_BASE64 } from '../assets/logo';
 
 interface HeaderProps {
   siteName: string;
@@ -14,7 +15,7 @@ export const Header: React.FC<HeaderProps> = ({ siteName, onOpenReports, onNewCl
     <header className="bg-white shadow-sm border-b border-slate-200 sticky top-0 z-40">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <img src="/logo.png" alt="Logo La Fe" className="h-14 w-auto object-contain" />
+          <img src={LOGO_BASE64} alt="Logo La Fe" className="h-14 w-auto object-contain" />
           <div>
             <h1 className="text-xl font-bold text-slate-900 leading-none">Gestión La Fe</h1>
             <div className="mt-1 flex items-center gap-2">

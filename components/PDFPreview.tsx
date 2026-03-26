@@ -4,6 +4,7 @@ import { Download, Printer, Calendar } from 'lucide-react';
 import { formatCurrency, numberToWords } from '../utils/currency';
 import { generatePaymentSlip, printPaymentSlip } from '../services/pdfService';
 import { SiteConfig } from '../config/siteConfigs';
+import { LOGO_BASE64 } from '../assets/logo';
 
 interface PDFPreviewProps {
   client: Client | null;
@@ -184,7 +185,7 @@ export const PDFPreview: React.FC<PDFPreviewProps> = ({ client, siteConfig }) =>
             {/* Header */}
             <div className="flex justify-between items-start mb-4">
               <div className="w-1/3">
-                <img src="/logo.png" alt="Logo" className="h-12 w-auto object-contain" />
+                <img src={LOGO_BASE64} alt="Logo" className="h-12 w-auto object-contain" />
               </div>
               <div className="w-1/3 text-center">
                 <div className="text-[8px] font-bold">Nit: {siteConfig.nit}</div>

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Building2, ChevronRight } from 'lucide-react';
 import { SITES, SiteConfig } from '../config/siteConfigs';
+import { LOGO_BASE64 } from '../assets/logo';
 
 interface SiteSelectorProps {
     onSelect: (site: SiteConfig) => void;
@@ -11,7 +12,7 @@ export const SiteSelector: React.FC<SiteSelectorProps> = ({ onSelect }) => {
         <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
             <div className="max-w-md w-full space-y-8 text-center bg-white p-10 rounded-3xl shadow-xl border border-slate-100">
                 <div className="flex flex-col items-center">
-                    <img src="/logo.png" alt="Logo La Fe" className="h-24 w-auto mb-6 drop-shadow-lg" />
+                    <img src={LOGO_BASE64} alt="Logo La Fe" className="h-24 w-auto mb-6 drop-shadow-lg" />
                     <h1 className="text-3xl font-black text-slate-900 mb-2">Bienvenido</h1>
                     <p className="text-slate-500 font-medium">Selecciona una sede para continuar</p>
                 </div>

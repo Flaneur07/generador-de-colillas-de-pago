@@ -106,6 +106,7 @@ function App() {
         onSave={handleUpdateClient}
         onDelete={handleDeleteClient}
         appScriptUrl={selectedSite.appScriptUrl}
+        siteId={selectedSite.id}
       />
 
       <NewClientModal
