@@ -243,13 +243,25 @@ export const PDFPreview: React.FC<PDFPreviewProps> = ({ client, siteConfig }) =>
                 <span className="font-bold flex-1 border-b border-slate-300">{client.numeroContrato}</span>
               </div>
 
-              {/* Row 6 */}
+              {/* Row 6: Observaciones */}
               <div className="flex border-b border-slate-800 p-1.5 h-14 gap-2">
                 <span className="shrink-0 font-medium">Observaciones:</span>
                 <div className="flex-1 text-slate-600 italic leading-tight">
                   {displayObs}
                 </div>
               </div>
+
+              {/* Row 7: Beneficiaries Count (Only for Heliconia or if exist) */}
+              {client.beneficiaries && client.beneficiaries.length > 0 && (
+                <div className="flex border-b border-slate-800 p-1.5 gap-2 bg-slate-50/50">
+                  <span className="shrink-0 font-bold text-[8px] uppercase text-slate-500">Grupo Familiar:</span>
+                  <div className="flex-1">
+                    <span className="text-[8px] font-bold text-slate-700">
+                      Este contrato cuenta con {client.beneficiaries.length} {client.beneficiaries.length === 1 ? 'beneficiario asociado' : 'beneficiarios asociados'}.
+                    </span>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Footer */}

@@ -54,14 +54,16 @@ export const ClientList: React.FC<ClientListProps> = ({ clients, selectedClient,
               <th className="px-4 py-3 font-semibold text-slate-900 border-b border-slate-200 w-12">#</th>
               <th className="px-4 py-3 font-semibold text-slate-900 border-b border-slate-200 min-w-[100px]">No. Póliza</th>
               <th className="px-4 py-3 font-semibold text-slate-900 border-b border-slate-200 min-w-[250px]">Apellidos y Nombre</th>
-              <th className="px-4 py-3 font-semibold text-slate-900 border-b border-slate-200">Concepto (Auto)</th>
-              <th className="px-4 py-3 font-semibold text-slate-900 border-b border-slate-200 text-right min-w-[100px]">Valor (Mes Actual)</th>
+              <th className="px-4 py-3 font-semibold text-slate-900 border-b border-slate-200">Concepto (pago)</th>
+              <th className="px-4 py-3 font-semibold text-slate-900 border-b border-slate-200">Grupo Familiar</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {filteredClients.length > 0 ? (
               filteredClients.map((client, idx) => {
                 const isSelected = selectedClient?.id === client.id;
+                const benCount = client.beneficiaries?.length || 0;
+                
                 return (
                   <tr 
                     key={client.id} 
@@ -79,11 +81,17 @@ export const ClientList: React.FC<ClientListProps> = ({ clients, selectedClient,
                     <td className={`px-4 py-3 font-medium ${isSelected ? 'text-blue-700' : 'text-slate-900'}`}>
                       {client.nombre}
                     </td>
-                    <td className="px-4 py-3 text-xs text-slate-500 truncate max-w-[150px]">
-                        {client.concepto}
-                    </td>
-                    <td className={`px-4 py-3 text-right font-medium ${client.valorCompra === 0 ? 'text-slate-300' : 'text-green-700'}`}>
+                    <td className={`px-4 py-3 font-bold ${client.valorCompra === 0 ? 'text-slate-300' : 'text-green-700'}`}>
                       {formatCurrency(client.valorCompra)}
+                    </td>
+                    <td className="px-4 py-3">
+                      {benCount > 0 ? (
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${isSelected ? 'bg-blue-200 text-blue-800' : 'bg-slate-100 text-slate-600'}`}>
+                          {benCount} {benCount === 1 ? 'beneficiario' : 'beneficiarios'}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] text-slate-300 font-medium">Sin beneficiarios</span>
+                      )}
                     </td>
                   </tr>
                 );

@@ -128,7 +128,7 @@ function doPost(e) {
           newRow[colBenContratoIdx] = targetBenContrato;
           if (colBenNombreIdx != -1) newRow[colBenNombreIdx] = data.nombre.toUpperCase();
           if (colBenFechaIdx != -1) newRow[colBenFechaIdx] = data.fechaNacimiento;
-          if (colBenEstadoIdx != -1) newRow[colBenEstadoIdx] = data.estado || "Activo";
+          if (colBenEstadoIdx != -1) newRow[colBenEstadoIdx] = data.estado || "ACTIVO";
           
           benSheet.appendRow(newRow);
           return response("OK: Beneficiario agregado");

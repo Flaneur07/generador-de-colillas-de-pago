@@ -3,7 +3,7 @@ export interface Beneficiary {
   numeroContrato: string;
   nombre: string;
   fechaNacimiento: string;
-  estado: 'Activo' | 'Inactivo';
+  estado: string;
 }
 
 export interface Client {

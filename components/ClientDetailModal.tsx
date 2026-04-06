@@ -16,6 +16,7 @@ interface ClientDetailModalProps {
 
 const months = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 const DELETE_CODE = "LAFE-SEG-2026";
+const BENEFICIARY_STATES = ['ACTIVO', 'RETIRADA', 'MODIFICACION', 'INACTIVO'];
 
 export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({
   isOpen,
@@ -36,7 +37,7 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({
 
   // Beneficiarios
   const [showAddBen, setShowAddBen] = useState(false);
-  const [newBen, setNewBen] = useState({ nombre: '', fechaNacimiento: '', estado: 'Activo' });
+  const [newBen, setNewBen] = useState({ nombre: '', fechaNacimiento: '', estado: 'ACTIVO' });
   const [isProcessingBen, setIsProcessingBen] = useState(false);
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -55,7 +56,7 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({
       setShowDeleteConfirm(false);
       setValidationCode('');
       setShowAddBen(false);
-      setNewBen({ nombre: '', fechaNacimiento: '', estado: 'Activo' });
+      setNewBen({ nombre: '', fechaNacimiento: '', estado: 'ACTIVO' });
     }
   }, [client, isOpen]);
 
@@ -119,10 +120,9 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({
     }
   };
 
-  const handleToggleBenStatus = async (benIndex: number) => {
+  const handleBenStatusChange = async (benIndex: number, newStatus: string) => {
     if (!formData || !formData.beneficiaries) return;
     const ben = formData.beneficiaries[benIndex];
-    const newStatus = ben.estado === 'Activo' ? 'Inactivo' : 'Activo';
     
     setIsProcessingBen(true);
     try {
@@ -134,7 +134,7 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({
       });
       
       const updatedBens = [...formData.beneficiaries];
-      updatedBens[benIndex] = { ...ben, estado: newStatus as any };
+      updatedBens[benIndex] = { ...ben, estado: newStatus };
       setFormData({ ...formData, beneficiaries: updatedBens });
     } catch (err) {
       alert("Error al actualizar estado del beneficiario");
@@ -199,7 +199,7 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({
         beneficiaries: [...(formData.beneficiaries || []), newBenObj]
       });
       setShowAddBen(false);
-      setNewBen({ nombre: '', fechaNacimiento: '', estado: 'Activo' });
+      setNewBen({ nombre: '', fechaNacimiento: '', estado: 'ACTIVO' });
     } catch (err) {
       alert("Error al agregar beneficiario");
     } finally {
@@ -377,7 +377,12 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({
                     {formData.beneficiaries.map((ben, idx) => (
                       <div key={ben.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-100 group">
                         <div className="flex items-center gap-4">
-                          <div className={`p-2 rounded-lg ${ben.estado === 'Activo' ? 'bg-green-100 text-green-700' : 'bg-slate-200 text-slate-500'}`}>
+                          <div className={`p-2 rounded-lg ${
+                            (ben.estado || 'ACTIVO').toUpperCase() === 'ACTIVO' ? 'bg-green-100 text-green-700' : 
+                            (ben.estado || 'ACTIVO').toUpperCase() === 'MODIFICACION' ? 'bg-amber-100 text-amber-700' :
+                            (ben.estado || 'ACTIVO').toUpperCase() === 'RETIRADA' ? 'bg-red-100 text-red-700' :
+                            'bg-slate-200 text-slate-500'
+                          }`}>
                             <User className="h-4 w-4" />
                           </div>
                           <div>
@@ -390,15 +395,25 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({
                             </p>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => handleToggleBenStatus(idx)}
+                        <div className="flex items-center gap-3">
+                          <select
+                            value={ben.estado || 'ACTIVO'}
+                            onChange={(e) => handleBenStatusChange(idx, e.target.value)}
                             disabled={isProcessingBen}
-                            className={`px-3 py-1.5 rounded-lg text-[10px] font-black transition-all ${ben.estado === 'Activo' ? 'bg-green-600 text-white hover:bg-green-700' : 'bg-slate-300 text-slate-600 hover:bg-slate-400'}`}
+                            className={`p-1.5 rounded-lg text-[10px] font-black outline-none border transition-all ${
+                              (ben.estado || 'ACTIVO').toUpperCase() === 'ACTIVO' ? 'bg-green-50 border-green-200 text-green-700' : 
+                              (ben.estado || 'ACTIVO').toUpperCase() === 'MODIFICACION' ? 'bg-amber-50 border-amber-200 text-amber-700' :
+                              (ben.estado || 'ACTIVO').toUpperCase() === 'RETIRADA' ? 'bg-red-50 border-red-200 text-red-700' :
+                              'bg-slate-100 border-slate-200 text-slate-600'
+                            }`}
                           >
-                            {ben.estado.toUpperCase()}
-                          </button>
+                            {BENEFICIARY_STATES.map(s => (
+                              <option key={s} value={s}>{s}</option>
+                            ))}
+                            {ben.estado && !BENEFICIARY_STATES.includes(ben.estado.toUpperCase()) && (
+                              <option value={ben.estado}>{ben.estado.toUpperCase()}</option>
+                            )}
+                          </select>
                           <button
                             type="button"
                             onClick={() => handleDeleteBen(idx)}
@@ -436,9 +451,22 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({
                         <input
                           type="text"
                           value={newBen.fechaNacimiento}
-                          onChange={(e) => setNewBen({...newBen, fechaNacimiento: e.target.value})}
-                          className="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:border-blue-500"
-                          placeholder="DÍA / MES / AÑO"
+                          onChange={(e) => {
+                            let val = e.target.value.replace(/\D/g, '');
+                            if (val.length > 8) val = val.substring(0, 8);
+                            
+                            let formatted = val;
+                            if (val.length > 2) {
+                              formatted = val.substring(0, 2) + '/' + val.substring(2);
+                            }
+                            if (val.length > 4) {
+                              formatted = formatted.substring(0, 5) + '/' + formatted.substring(5);
+                            }
+                            
+                            setNewBen({...newBen, fechaNacimiento: formatted});
+                          }}
+                          className="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:border-blue-500 font-mono"
+                          placeholder="DD / MM / AÑO"
                         />
                       </div>
                     </div>

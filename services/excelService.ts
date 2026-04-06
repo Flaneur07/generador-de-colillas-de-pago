@@ -193,12 +193,14 @@ export const fetchBeneficiaries = async (sheetId: string): Promise<Beneficiary[]
       const nombre = String(row[idxNombre] || "").trim();
       if (!nombre || !contrato) continue;
 
+      const rawEstado = idxEstado !== -1 ? String(row[idxEstado] || "").trim() : "";
+      
       beneficiaries.push({
         id: `ben-${i}-${Date.now()}`,
         numeroContrato: contrato,
         nombre: nombre,
         fechaNacimiento: String(idxFecha !== -1 ? row[idxFecha] : ""),
-        estado: (idxEstado !== -1 && String(row[idxEstado] || "").toLowerCase().includes("inactivo")) ? 'Inactivo' : 'Activo'
+        estado: rawEstado || 'ACTIVO'
       });
     }
 
@@ -232,18 +234,27 @@ export const syncWithGoogleSheets = async (sheetId: string, targetSheetName: str
 
     const clients = processWorksheet(workbook.Sheets[sheetName]);
 
-    // Relacionar beneficiarios
+    // Relacionar beneficiarios para la sede Heliconia
     if (sheetId === "1LclqwFBtLqIW2KOq5pWXYY2EIqR95R6IxIjQJLt4X-k") {
       const beneficiaries = await fetchBeneficiaries(sheetId);
       
       clients.forEach(client => {
-        const clientContrato = String(client.numeroContrato).trim();
-        const clientBaseContrato = clientContrato.split('-')[0].trim();
+        const clientContrato = String(client.numeroContrato).trim().toUpperCase();
+        // Extraemos la base: si es "123-A" o "123-0", la base es "123"
+        const clientBaseContrato = clientContrato.split(/[-–—_]/)[0].trim();
         
         client.beneficiaries = beneficiaries.filter(b => {
-          const benFullContrato = String(b.numeroContrato).trim();
-          const benBaseContrato = benFullContrato.split('-')[0].trim();
-          return benBaseContrato === clientBaseContrato && benFullContrato !== clientContrato;
+          const benFullContrato = String(b.numeroContrato).trim().toUpperCase();
+          const benBaseContrato = benFullContrato.split(/[-–—_]/)[0].trim();
+          
+          // Un beneficiario coincide si:
+          // 1. Tienen la misma base de contrato
+          // 2. El contrato completo NO es idéntico (para no ser su propio beneficiario)
+          // 3. O el contrato completo del beneficiario contiene el del cliente como base seguido de un guión
+          const isSameBase = benBaseContrato === clientBaseContrato;
+          const isDifferentFull = benFullContrato !== clientContrato;
+          
+          return isSameBase && isDifferentFull;
         });
       });
     }

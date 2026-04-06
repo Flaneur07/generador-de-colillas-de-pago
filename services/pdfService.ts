@@ -140,7 +140,23 @@ const createPDFDoc = async (client: Client, siteConfig: SiteConfig, receiptNumbe
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9);
   doc.setTextColor(60, 60, 60);
-  doc.text(obsText, marginX + 40, startY + (rowHeight * 5) + 6.5, { maxWidth: contentWidth - 45 });
+  // Row 7: Beneficiarios (Only if they exist)
+  if (client.beneficiaries && client.beneficiaries.length > 0) {
+    const activeBens = client.beneficiaries.filter(b => (b.estado || 'ACTIVO').toUpperCase() === 'ACTIVO');
+    if (activeBens.length > 0) {
+      doc.rect(marginX, startY + (rowHeight * 7), contentWidth, rowHeight);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(7.5);
+      doc.setTextColor(100, 100, 100);
+      doc.text("GRUPO FAMILIAR:", marginX + 3, startY + (rowHeight * 7) + 6.5);
+      
+      const benText = `ESTE CONTRATO CUENTA CON ${activeBens.length} ${activeBens.length === 1 ? 'BENEFICIARIO ASOCIADO' : 'BENEFICIARIOS ASOCIADOS'}.`;
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8);
+      doc.setTextColor(0, 0, 0);
+      doc.text(benText, marginX + 32, startY + (rowHeight * 7) + 6.5);
+    }
+  }
 
   // --- Footer ---
   const footerY = startY + (rowHeight * 7) + 12;
