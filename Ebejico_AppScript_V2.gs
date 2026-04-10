@@ -5,11 +5,11 @@ function doPost(e) {
     var targetPoliza = String(data.poliza).trim();
     
     var ss = SpreadsheetApp.getActiveSpreadsheet();
-    // PARA HELICONIA: La hoja se llama "2026"
-    var sheet = ss.getSheetByName("2026") || ss.getSheets()[0]; 
-    if (!sheet) return response("Error: Hoja '2026' no encontrada");
+    // PARA EBÉJICO: La hoja principal de pagos se llama "mensualidades 2026"
+    var sheet = ss.getSheetByName("mensualidades 2026") || ss.getSheets()[0]; 
+    if (!sheet) return response("Error: Hoja 'mensualidades 2026' no encontrada");
 
-    var values = sheet.getDataRange().getValues();
+    var values = sheet.getDataRange().getDisplayValues();
     var headers = values[0];
     
     var colPolizaIdx = -1;
@@ -19,14 +19,13 @@ function doPost(e) {
     for (var i = 0; i < headers.length; i++) {
       var h = String(headers[i]).toLowerCase().trim();
       
-      // Identificar columna Contrato
-      if (h === "contrato" || h === "n° contrato" || h === "no. contrato" || h === "poliza") {
-        colPolizaIdx = i;
-      } else if (colPolizaIdx == -1 && (h.includes("pol") || h.includes("no.") || h.includes("contrato"))) {
+      // Identificar columna Contrato (nombre homologado)
+      // Prioriza el nombre exacto "contrato"; también soporta nombres anteriores por compatibilidad.
+      if (h === "contrato" || h === "no. póliza" || h === "no. poliza" || h === "no póliza" || h === "no poliza" || h === "poliza") {
         colPolizaIdx = i;
       }
       
-      // Identificar columna Nombre (Heliconia usa 'nombre y apellido')
+      // Identificar columna Nombre
       if (h.includes("nombre") || h.includes("apellido") || h.includes("cliente")) {
         colNombreIdx = i;
       }
@@ -41,7 +40,8 @@ function doPost(e) {
 
     if (action === 'create') {
       for (var r = 1; r < values.length; r++) {
-        if (String(values[r][colPolizaIdx]).trim() === targetPoliza) {
+        var existingPol = String(values[r][colPolizaIdx]).replace(/'/g, "").trim();
+        if (existingPol === targetPoliza) {
           return response("Error: El contrato ya existe");
         }
       }
@@ -51,12 +51,14 @@ function doPost(e) {
       if (colNombreIdx != -1) newRow[colNombreIdx] = data.nombre.toUpperCase();
       
       sheet.appendRow(newRow);
-      return response("OK: Cliente creado en Heliconia");
+      sheet.getRange(sheet.getLastRow(), colPolizaIdx + 1).setNumberFormat("@").setValue(targetPoliza);
+      return response("OK: Cliente creado en Ebéjico");
 
     } else {
       var rowFoundIdx = -1;
       for (var r = 1; r < values.length; r++) {
-        if (String(values[r][colPolizaIdx]).trim() === targetPoliza) {
+        var currentPol = String(values[r][colPolizaIdx]).replace(/'/g, "").trim();
+        if (currentPol === targetPoliza) {
           rowFoundIdx = r + 1;
           break;
         }
@@ -68,7 +70,7 @@ function doPost(e) {
         sheet.deleteRow(rowFoundIdx);
         
         // BORRADO EN CASCADA DE BENEFICIARIOS
-        var benSheet = ss.getSheetByName("Beneficiarios_Heliconia");
+        var benSheet = ss.getSheetByName("Beneficiarios_Ebéjico");
         if (benSheet) {
           var benValues = benSheet.getDataRange().getDisplayValues();
           var colContratoIdx = -1;
@@ -77,8 +79,10 @@ function doPost(e) {
             if (bh.includes("contrato") || bh.includes("póliza") || bh.includes("poliza")) colContratoIdx = j;
           }
           if (colContratoIdx !== -1) {
+             // Recorremos de abajo hacia arriba para evitar salto de índices al borrar fila
              for (var r = benValues.length - 1; r >= 1; r--) {
                 var c = String(benValues[r][colContratoIdx]).replace(/'/g, "").trim();
+                // Si el formato del contrato derivado (ej. "1010-1") empieza exactamente en "1010"
                 if (c.split("-")[0] === targetPoliza) {
                    benSheet.deleteRow(r + 1);
                 }
@@ -96,7 +100,6 @@ function doPost(e) {
         if (targetMonth) {
           for (var k = 0; k < headers.length; k++) {
             var hMonth = String(headers[k]).toLowerCase().trim();
-            // Soporte para variaciones como 'junio'/'jun' o 'julio'/'jul'
             if (hMonth.startsWith(targetMonth.toLowerCase()) || 
                 (targetMonth.toLowerCase() === "jun" && hMonth === "junio") ||
                 (targetMonth.toLowerCase() === "jul" && hMonth === "julio")) {
@@ -110,19 +113,17 @@ function doPost(e) {
           sheet.getRange(rowFoundIdx, colMonthIdx).setValue(newValue);
         }
 
-        // Actualizar observaciones si vienen en el payload
         if (colObsIdx != -1 && data.observaciones !== undefined) {
           sheet.getRange(rowFoundIdx, colObsIdx + 1).setValue(data.observaciones);
         }
 
-        return response("OK: Datos actualizados en Heliconia");
+        return response("OK: Datos actualizados en Ebéjico");
       }
 
       if (action === 'add_beneficiary' || action === 'delete_beneficiary' || action === 'toggle_beneficiary') {
-        var benSheet = ss.getSheetByName("Beneficiarios_Heliconia");
-        if (!benSheet) return response("Error: Hoja 'Beneficiarios_Heliconia' no encontrada");
+        var benSheet = ss.getSheetByName("Beneficiarios_Ebéjico");
+        if (!benSheet) return response("Error: Hoja 'Beneficiarios_Ebéjico' no encontrada");
         
-        // CORRECCIÓN PROACTIVA: Obtenemos el texto literal de la pantalla
         var benValues = benSheet.getDataRange().getDisplayValues();
         var benHeaders = benValues[0];
         
@@ -145,19 +146,22 @@ function doPost(e) {
 
         if (action === 'add_beneficiary') {
           var newRow = new Array(benHeaders.length).fill("");
-          newRow[colBenContratoIdx] = "'" + targetBenContrato; // Comilla simple fuerza texto
+          // NO incluir contrato aquí: appendRow lo auto-convertiría a fecha.
+          // Se setea explícitamente como texto después del appendRow.
           if (colBenNombreIdx != -1) newRow[colBenNombreIdx] = data.nombre.toUpperCase();
           if (colBenFechaIdx != -1) newRow[colBenFechaIdx] = data.fechaNacimiento;
           if (colBenEstadoIdx != -1) newRow[colBenEstadoIdx] = data.estado || "ACTIVO";
           
           benSheet.appendRow(newRow);
+          // Setear contrato como texto puro DESPUÉS del appendRow para evitar conversión a fecha
+          benSheet.getRange(benSheet.getLastRow(), colBenContratoIdx + 1).setNumberFormat("@").setValue(targetBenContrato);
           return response("OK: Beneficiario agregado");
         }
 
-        // Buscar fila del beneficiario para delete o toggle
         var benRowFoundIdx = -1;
         for (var r = 1; r < benValues.length; r++) {
-          if (String(benValues[r][colBenContratoIdx]).trim() === targetBenContrato) {
+          var currentBenPol = String(benValues[r][colBenContratoIdx]).replace(/'/g, "").trim();
+          if (currentBenPol === targetBenContrato) {
             benRowFoundIdx = r + 1;
             break;
           }
@@ -174,6 +178,8 @@ function doPost(e) {
           if (colBenEstadoIdx != -1) {
             benSheet.getRange(benRowFoundIdx, colBenEstadoIdx + 1).setValue(data.estado);
             return response("OK: Estado del beneficiario actualizado");
+          } else {
+             return response("Error: Columna 'Estado' no encontrada");
           }
         }
       }

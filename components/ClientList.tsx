@@ -54,7 +54,7 @@ export const ClientList: React.FC<ClientListProps> = ({ clients, selectedClient,
               <th className="px-4 py-3 font-semibold text-slate-900 border-b border-slate-200 w-12">#</th>
               <th className="px-4 py-3 font-semibold text-slate-900 border-b border-slate-200 min-w-[100px]">No. Póliza</th>
               <th className="px-4 py-3 font-semibold text-slate-900 border-b border-slate-200 min-w-[250px]">Apellidos y Nombre</th>
-              <th className="px-4 py-3 font-semibold text-slate-900 border-b border-slate-200">Concepto (pago)</th>
+              <th className="px-4 py-3 font-semibold text-slate-900 border-b border-slate-200">Pago del mes</th>
               <th className="px-4 py-3 font-semibold text-slate-900 border-b border-slate-200">Grupo Familiar</th>
             </tr>
           </thead>

@@ -190,7 +190,7 @@ export const PDFPreview: React.FC<PDFPreviewProps> = ({ client, siteConfig }) =>
               <div className="w-1/3 text-center">
                 <div className="text-[8px] font-bold">Nit: {siteConfig.nit}</div>
                 <div className="text-[8px]">Régimen Simplificado</div>
-                <div className="text-[9px] font-bold text-green-800">ORGANIZACIÓN SERVICIOS FUNERARIOS</div>
+                <div className="text-[9px] font-bold text-green-800">{siteConfig.orgName}</div>
                 <div className="text-[8px] font-bold">{siteConfig.city}</div>
               </div>
               <div className="w-1/3 flex justify-end">

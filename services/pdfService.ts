@@ -38,7 +38,7 @@ const createPDFDoc = async (client: Client, siteConfig: SiteConfig, receiptNumbe
   doc.setTextColor(0, 0, 0);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(11);
-  doc.text("ORGANIZACIÓN SERVICIOS FUNERARIOS", centerX + 5, 12, { align: "center" });
+  doc.text(siteConfig.orgName, centerX + 5, 12, { align: "center" });
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9);

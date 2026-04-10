@@ -107,6 +107,7 @@ function App() {
         onDelete={handleDeleteClient}
         appScriptUrl={selectedSite.appScriptUrl}
         siteId={selectedSite.id}
+        spreadsheetId={selectedSite.spreadsheetId}
       />
 
       <NewClientModal

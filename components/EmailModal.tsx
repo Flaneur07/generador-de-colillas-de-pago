@@ -102,7 +102,7 @@ export const EmailModal: React.FC<EmailModalProps> = ({
       const pdfBase64 = await getPaymentSlipBase64(tempClient, siteConfig, receiptNumber);
 
       // 2. Body
-      const body = `Hola ${client.nombre},\n\nAdjunto encontrarás tu comprobante de pago correspondiente a la mensualidad de ${selectedMonth} 2026.\n\nValor pagado: $${selectedValue.toLocaleString()}\n\nGracias por tu pago.\n\nAtentamente,\nOrganización La Fe`;
+      const body = `Hola ${client.nombre},\n\nAdjunto encontrarás tu comprobante de pago correspondiente a la mensualidad de ${selectedMonth} 2026.\n\nValor pagado: $${selectedValue.toLocaleString()}\n\nGracias por tu pago.\n\nAtentamente,\n${siteConfig.orgName}`;
 
       // 3. Send via Gmail API
       await sendGmail(accessToken, toEmail, subject, body, pdfBase64);

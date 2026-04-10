@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { X, User, Calendar, FileText, DollarSign, RefreshCw, CheckCircle2, AlertTriangle, Loader2, Trash2, ShieldCheck } from 'lucide-react';
 import { Client } from '../types';
 import { updatePaymentInCloud, syncActionWithCloud } from '../services/googleSheetsBridge';
+import { fetchBeneficiaries } from '../services/excelService';
 
 interface ClientDetailModalProps {
   isOpen: boolean;
@@ -12,6 +13,7 @@ interface ClientDetailModalProps {
   onDelete?: (clientId: string) => void;
   appScriptUrl: string;
   siteId?: string;
+  spreadsheetId?: string;
 }
 
 const months = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
@@ -25,7 +27,8 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({
   onSave,
   onDelete,
   appScriptUrl,
-  siteId
+  siteId,
+  spreadsheetId
 }) => {
   const [formData, setFormData] = useState<Client | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -39,6 +42,7 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({
   const [showAddBen, setShowAddBen] = useState(false);
   const [newBen, setNewBen] = useState({ nombre: '', fechaNacimiento: '', estado: 'ACTIVO' });
   const [isProcessingBen, setIsProcessingBen] = useState(false);
+  const [isFetchingBens, setIsFetchingBens] = useState(false);
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [validationCode, setValidationCode] = useState('');
@@ -46,7 +50,8 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({
 
   useEffect(() => {
     if (client && isOpen) {
-      setFormData(JSON.parse(JSON.stringify(client)));
+      const clientCopy: Client = JSON.parse(JSON.stringify(client));
+      setFormData(clientCopy);
       setSyncStatus('idle');
       setErrorMsg('');
       setModifiedMonths(new Set());
@@ -57,6 +62,24 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({
       setValidationCode('');
       setShowAddBen(false);
       setNewBen({ nombre: '', fechaNacimiento: '', estado: 'ACTIVO' });
+
+      // Refrescar beneficiarios desde Sheets al abrir el modal
+      const BENEFICIARY_SITES = ['heliconia', 'sevilla', 'ebejico'];
+      if (spreadsheetId && siteId && BENEFICIARY_SITES.includes(siteId)) {
+        setIsFetchingBens(true);
+        fetchBeneficiaries(spreadsheetId)
+          .then(allBens => {
+            const clientBase = String(client.numeroContrato).replace(/'/g, '').trim().toUpperCase();
+            const linked = allBens.filter(b => {
+              const benFull = String(b.numeroContrato).replace(/'/g, '').trim().toUpperCase();
+              const benBase = benFull.split(/[-–—_]/)[0].trim();
+              return benBase === clientBase && benFull !== clientBase;
+            });
+            setFormData(prev => prev ? { ...prev, beneficiaries: linked } : prev);
+          })
+          .catch(err => console.error('[Modal] Error al refrescar beneficiarios:', err))
+          .finally(() => setIsFetchingBens(false));
+      }
     }
   }, [client, isOpen]);
 
@@ -219,10 +242,27 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({
 
     setIsDeleting(true);
     try {
+      // 1. Eliminar iterativamente a todos los beneficiarios asociados en la nube
+      if (formData.beneficiaries && formData.beneficiaries.length > 0) {
+        for (const ben of formData.beneficiaries) {
+          try {
+            await syncActionWithCloud(scriptUrl, {
+              action: 'delete_beneficiary',
+              poliza: formData.numeroContrato,
+              beneficiarioContrato: ben.numeroContrato
+            });
+          } catch (e) {
+            console.error("No se pudo eliminar al beneficiario " + ben.numeroContrato, e);
+          }
+        }
+      }
+
+      // 2. Eliminar al cliente principal
       await syncActionWithCloud(scriptUrl, {
         action: 'delete',
         poliza: formData.numeroContrato
       });
+      
       if (onDelete) onDelete(formData.id);
       onClose();
     } catch (err) {
@@ -357,11 +397,21 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({
               </p>
             </section>
 
-            {siteId === 'heliconia' && (
+            {(siteId === 'heliconia' || siteId === 'sevilla' || siteId === 'ebejico') && (
               <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                 <div className="flex justify-between items-center mb-6">
                   <h3 className="text-xs font-black text-slate-400 uppercase flex items-center gap-2">
                     <ShieldCheck className="h-4 w-4" /> Grupo Familiar (Beneficiarios)
+                    {isFetchingBens && (
+                      <span className="ml-2 text-[9px] font-bold text-slate-500 bg-slate-100 px-2 py-1 rounded-full flex items-center gap-1 animate-pulse uppercase border border-slate-200">
+                        <Loader2 className="h-3 w-3 animate-spin" /> CARGANDO...
+                      </span>
+                    )}
+                    {isProcessingBen && (
+                      <span className="ml-2 text-[9px] font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded-full flex items-center gap-1 animate-pulse uppercase border border-blue-100">
+                        <Loader2 className="h-3 w-3 animate-spin" /> SINCRONIZANDO CON NUBE...
+                      </span>
+                    )}
                   </h3>
                   <button
                     type="button"
@@ -515,7 +565,7 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({
               disabled={isSyncing}
               className={`px-10 py-3 rounded-xl font-black text-white shadow-lg flex items-center gap-2 transition-all ${isSyncing ? 'bg-blue-400 scale-95' : 'bg-green-600 hover:bg-green-700 hover:scale-105 active:scale-95'}`}
             >
-              {isSyncing ? <RefreshCw className="h-5 w-5 animate-spin" /> : "GUARDAR EN EXCEL"}
+              {isSyncing ? <RefreshCw className="h-5 w-5 animate-spin" /> : "GUARDAR EN BD"}
             </button>
           </div>
         </div>

@@ -12,7 +12,7 @@ function doPost(e) {
     if (!sheet) return response("Error: Ninguna hoja disponible.");
 
     // 3. Obtener todos los datos para encontrar las cabeceras (la fila 1)
-    var values = sheet.getDataRange().getValues();
+    var values = sheet.getDataRange().getDisplayValues();
     // Buscar la fila de encabezados (buscamos en las primeras 5 filas por si hay títulos grandes)
     var headerRowIdx = 0;
     var headers = [];
@@ -69,7 +69,7 @@ function doPost(e) {
       var newRow = new Array(headers.length).fill("");
       
       // 3. Rellenar datos
-      newRow[colPolizaIdx] = targetPoliza;
+      newRow[colPolizaIdx] = "'" + targetPoliza;
       if (colNombreIdx != -1 && data.nombre) {
         newRow[colNombreIdx] = String(data.nombre).toUpperCase();
       }
