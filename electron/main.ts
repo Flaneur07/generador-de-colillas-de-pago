@@ -2,6 +2,12 @@ import { app, BrowserWindow, dialog } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { autoUpdater } from 'electron-updater';
+import log from 'electron-log';
+
+// Configurar logs para el actualizador
+autoUpdater.logger = log;
+(autoUpdater.logger as any).transports.file.level = 'info';
+log.info('App starting...');
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

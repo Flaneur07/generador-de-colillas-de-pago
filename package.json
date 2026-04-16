@@ -1,7 +1,7 @@
 {
   "name": "generador-de-colillas-de-pago",
   "private": true,
-  "version": "1.0.5",
+  "version": "1.0.6",
   "type": "module",
   "main": "dist-electron/main.js",
   "scripts": {
@@ -49,6 +49,7 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.103.0",
+    "electron-log": "^5.4.3",
     "electron-updater": "^6.8.3",
     "jspdf": "^4.0.0",
     "lucide-react": "^0.562.0",
