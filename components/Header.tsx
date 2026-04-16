@@ -1,9 +1,11 @@
-
-import React from 'react';
-
-import { BarChart3, UserPlus, LogOut } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { BarChart3, UserPlus, LogOut, DownloadCloud } from 'lucide-react';
 import { LOGO_BASE64 } from '../assets/logo';
 import { SyncStatusIndicator } from './SyncStatusIndicator';
+
+// Detectar si estamos en Electron para usar IPC
+const isElectron = typeof window !== 'undefined' && window.process && (window.process as any).type === 'renderer';
+const ipcRenderer = isElectron ? (window as any).require('electron').ipcRenderer : null;
 
 interface HeaderProps {
   siteName: string;
@@ -13,13 +15,50 @@ interface HeaderProps {
 }
 
 export const Header: React.FC<HeaderProps> = ({ siteName, onOpenReports, onNewClient, onLogout }) => {
+  const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
+  const [updateVersion, setUpdateVersion] = useState<string | null>(null);
+  const [currentVersion, setCurrentVersion] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (ipcRenderer) {
+      ipcRenderer.on('update-available', (_: any, version: string) => {
+        setUpdateVersion(version);
+      });
+      ipcRenderer.on('update-progress', (_: any, percent: number) => {
+        setDownloadProgress(Math.round(percent));
+      });
+      ipcRenderer.on('current-version', (_: any, version: string) => {
+        setCurrentVersion(version);
+      });
+    }
+  }, []);
+
   return (
     <header className="bg-white shadow-sm border-b border-slate-200 sticky top-0 z-40">
+      {/* Barra de progreso de actualización sutil */}
+      {downloadProgress !== null && (
+        <div className="absolute top-0 left-0 w-full h-1 bg-slate-100 overflow-hidden z-50">
+          <div 
+            className="h-full bg-blue-600 transition-all duration-300 ease-out shadow-[0_0_10px_rgba(37,99,235,0.5)]"
+            style={{ width: `${downloadProgress}%` }}
+          />
+          <div className="absolute top-1 left-1/2 -translate-x-1/2 bg-blue-600 text-white text-[8px] font-black px-2 py-0.5 rounded-b-md shadow-sm border border-t-0 border-blue-500 flex items-center gap-1">
+            <DownloadCloud className="h-2 w-2 animate-bounce" />
+            DESCARGANDO VERSIÓN {updateVersion || ''}: {downloadProgress}%
+          </div>
+        </div>
+      )}
+
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
         <div className="flex items-center gap-4">
           <img src={LOGO_BASE64} alt="Logo La Fe" className="h-14 w-auto object-contain" />
           <div>
-            <h1 className="text-xl font-bold text-slate-900 leading-none">Gestión La Fe</h1>
+            <div className="flex items-baseline gap-2">
+               <h1 className="text-xl font-bold text-slate-900 leading-none">Gestión La Fe</h1>
+               {downloadProgress === null && currentVersion && (
+                 <span className="text-[10px] font-bold text-slate-400">v{currentVersion}</span>
+               )}
+            </div>
             <div className="mt-1 flex items-center gap-2">
               <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-green-100 text-green-700">
                 SEDE {siteName.toUpperCase()}

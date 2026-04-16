@@ -69,12 +69,22 @@ app.on('activate', () => {
 app.whenReady().then(() => {
     createWindow();
     
+    // Enviar versión actual al renderer
+    win?.webContents.on('did-finish-load', () => {
+        win?.webContents.send('current-version', app.getVersion());
+    });
+    
     // Check for updates
     autoUpdater.checkForUpdatesAndNotify();
 });
 
-autoUpdater.on('update-available', () => {
-    console.log('Update available.');
+autoUpdater.on('update-available', (info) => {
+    console.log('Update available:', info.version);
+    win?.webContents.send('update-available', info.version);
+});
+
+autoUpdater.on('download-progress', (progressObj) => {
+    win?.webContents.send('update-progress', progressObj.percent);
 });
 
 autoUpdater.on('update-downloaded', (info) => {

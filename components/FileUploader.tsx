@@ -29,6 +29,11 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ onDataLoaded, siteId
     }
   };
 
+  // Carga automática al montar o cambiar de sede
+  useEffect(() => {
+    handleSync();
+  }, [siteId]);
+
   return (
     <div className="w-full space-y-4">
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">

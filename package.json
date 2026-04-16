@@ -1,7 +1,7 @@
 {
   "name": "generador-de-colillas-de-pago",
   "private": true,
-  "version": "1.0.2",
+  "version": "1.0.5",
   "type": "module",
   "main": "dist-electron/main.js",
   "scripts": {
@@ -17,13 +17,22 @@
     "directories": {
       "output": "release"
     },
-    "compression": "store",
+    "compression": "maximum",
+    "asar": true,
     "files": [
       "dist/**/*",
-      "dist-electron/**/*"
+      "dist-electron/**/*",
+      "package.json"
     ],
     "win": {
-      "target": "nsis"
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
     },
     "nsis": {
       "oneClick": false,

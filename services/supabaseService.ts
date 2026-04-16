@@ -15,10 +15,8 @@ const REVERSE_MONTH_MAP: Record<string, string> = {
 };
 
 export const supabaseService = {
-  /**
-   * Obtiene todos los clientes y sus beneficiarios para una sede
-   */
   async getSiteClients(siteId: string): Promise<Client[]> {
+    let clients: Client[] = [];
     try {
       if (!navigator.onLine) {
         throw new Error('Offline (simulado o real)');
@@ -35,48 +33,115 @@ export const supabaseService = {
 
       if (clientsError) throw clientsError;
 
-      const clients = (clientsData || []).map(row => {
-      const payments: Record<string, number> = {};
-      Object.entries(REVERSE_MONTH_MAP).forEach(([dbKey, appKey]) => {
-        payments[appKey] = Number(row[dbKey]) || 0;
-      });
+      clients = (clientsData || []).map(row => {
+        const payments: Record<string, number> = {};
+        Object.entries(REVERSE_MONTH_MAP).forEach(([dbKey, appKey]) => {
+          payments[appKey] = Number(row[dbKey]) || 0;
+        });
 
-      const beneficiaries: Beneficiary[] = (row.beneficiaries || []).map((b: any) => ({
-        id: b.id,
-        numeroContrato: b.contract_number,
-        nombre: b.full_name,
-        fechaNacimiento: b.birth_date || '',
-        estado: b.status || 'ACTIVO'
-      }));
+        const beneficiaries: Beneficiary[] = (row.beneficiaries || []).map((b: any) => ({
+          id: b.id,
+          numeroContrato: b.contract_number,
+          nombre: b.full_name,
+          fechaNacimiento: b.birth_date || '',
+          estado: b.status || 'ACTIVO'
+        }));
 
-      return {
-        id: row.id,
-        nombre: row.full_name,
-        cedula: row.contract_number,
-        numeroContrato: row.contract_number,
-        telefono: '',
-        correo: '',
-        valorCompra: 0,
-        concepto: 'Mensualidad 2026',
-        observaciones: row.observaciones || '',
-        payments,
-        beneficiaries
-      };
+        return {
+          id: row.id,
+          nombre: row.full_name,
+          cedula: row.contract_number,
+          numeroContrato: row.contract_number,
+          telefono: '',
+          correo: '',
+          valorCompra: 0,
+          concepto: 'Mensualidad 2026',
+          observaciones: row.observaciones || '',
+          payments,
+          beneficiaries
+        };
       });
 
       localStorage.setItem(`colillas_cache_site_${siteId}`, JSON.stringify(clients));
-      return clients;
-
     } catch (error: any) {
       if (!navigator.onLine || error.message?.includes('Failed to fetch') || error.message?.includes('Offline')) {
         console.warn(`[Supabase] Cargando caché offline para sede ${siteId}`);
         const cachedData = localStorage.getItem(`colillas_cache_site_${siteId}`);
         if (cachedData) {
-          return JSON.parse(cachedData);
+          clients = JSON.parse(cachedData);
+        } else {
+          return []; // Nada en caché y sin internet
         }
+      } else {
+        throw error;
       }
-      throw error;
     }
+
+    // ─── LÓGICA DE REPLAY (Optimismo total) ───
+    // Aplicamos los cambios que están en la cola pendientes de subir a la nube
+    const queue = supabaseQueueService.getQueue();
+    if (queue.length === 0) return clients;
+
+    const merged = [...clients];
+    
+    for (const action of queue) {
+      if (action.type === 'updatePayment') {
+        const idx = merged.findIndex(c => c.id === action.clientId);
+        if (idx !== -1) {
+          const appMonth = REVERSE_MONTH_MAP[action.payload.month];
+          if (appMonth) merged[idx].payments[appMonth] = action.payload.value;
+        }
+      } else if (action.type === 'updateObservaciones') {
+        const idx = merged.findIndex(c => c.id === action.clientId);
+        if (idx !== -1) merged[idx].observaciones = action.payload.observaciones;
+      } else if (action.type === 'createClient') {
+        const payload = action.payload.client;
+        if (!merged.find(c => c.id === action.clientId)) {
+          merged.push({
+            id: action.clientId,
+            nombre: payload.full_name,
+            cedula: payload.contract_number,
+            numeroContrato: payload.contract_number,
+            telefono: '',
+            correo: '',
+            valorCompra: 0,
+            concepto: 'Mensualidad 2026',
+            observaciones: payload.observaciones || '',
+            payments: {
+              'Ene': 0, 'Feb': 0, 'Mar': 0, 'Abr': 0, 'May': 0, 'Jun': 0,
+              'Jul': 0, 'Ago': 0, 'Sep': 0, 'Oct': 0, 'Nov': 0, 'Dic': 0
+            },
+            beneficiaries: []
+          } as any);
+        }
+      } else if (action.type === 'deleteClient') {
+        const idx = merged.findIndex(c => c.id === action.clientId);
+        if (idx !== -1) merged.splice(idx, 1);
+      } else if (action.type === 'addBeneficiary') {
+        const client = merged.find(c => c.id === action.clientId);
+        if (client) {
+          const b = action.payload.beneficiary;
+          client.beneficiaries.push({
+            id: `temp-${Date.now()}`,
+            numeroContrato: b.contract_number,
+            nombre: b.full_name,
+            fechaNacimiento: b.birth_date,
+            estado: b.status
+          });
+        }
+      } else if (action.type === 'deleteBeneficiary') {
+         merged.forEach(c => {
+           c.beneficiaries = c.beneficiaries.filter(b => b.numeroContrato !== action.payload.contract_number);
+         });
+      } else if (action.type === 'updateBeneficiaryStatus') {
+        merged.forEach(c => {
+          const b = c.beneficiaries.find(b => b.numeroContrato === action.payload.contract_number);
+          if (b) b.estado = action.payload.status;
+        });
+      }
+    }
+
+    return merged.sort((a, b) => a.nombre.localeCompare(b.nombre));
   },
 
   /**
