@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { BarChart3, UserPlus, LogOut, DownloadCloud } from 'lucide-react';
 import { LOGO_BASE64 } from '../assets/logo';
 import { SyncStatusIndicator } from './SyncStatusIndicator';
+import packageJson from '../package.json';
 
 // Detectar si estamos en Electron para usar IPC
 const isElectron = typeof window !== 'undefined' && window.process && (window.process as any).type === 'renderer';
@@ -17,7 +18,7 @@ interface HeaderProps {
 export const Header: React.FC<HeaderProps> = ({ siteName, onOpenReports, onNewClient, onLogout }) => {
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
   const [updateVersion, setUpdateVersion] = useState<string | null>(null);
-  const [currentVersion, setCurrentVersion] = useState<string | null>(null);
+  const currentVersion = packageJson.version;
 
   useEffect(() => {
     if (ipcRenderer) {
@@ -26,9 +27,6 @@ export const Header: React.FC<HeaderProps> = ({ siteName, onOpenReports, onNewCl
       });
       ipcRenderer.on('update-progress', (_: any, percent: number) => {
         setDownloadProgress(Math.round(percent));
-      });
-      ipcRenderer.on('current-version', (_: any, version: string) => {
-        setCurrentVersion(version);
       });
     }
   }, []);

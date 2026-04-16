@@ -1,7 +1,7 @@
 {
   "name": "generador-de-colillas-de-pago",
   "private": true,
-  "version": "1.0.6",
+  "version": "1.1.0",
   "type": "module",
   "main": "dist-electron/main.js",
   "scripts": {

@@ -1,29 +1,48 @@
 import React, { useState, useEffect } from 'react';
-import { Building2, ChevronRight } from 'lucide-react';
+import { Building2, ChevronRight, DownloadCloud } from 'lucide-react';
 import { SITES, SiteConfig } from '../config/siteConfigs';
 import { LOGO_BASE64 } from '../assets/logo';
+import packageJson from '../package.json';
 
 // Detectar si estamos en Electron para usar IPC
 const isElectron = typeof window !== 'undefined' && window.process && (window.process as any).type === 'renderer';
 const ipcRenderer = isElectron ? (window as any).require('electron').ipcRenderer : null;
-
 interface SiteSelectorProps {
     onSelect: (site: SiteConfig) => void;
 }
 
 export const SiteSelector: React.FC<SiteSelectorProps> = ({ onSelect }) => {
-    const [currentVersion, setCurrentVersion] = useState<string | null>(null);
+    const currentVersion = packageJson.version;
+    const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
+    const [updateVersion, setUpdateVersion] = useState<string | null>(null);
 
     useEffect(() => {
         if (ipcRenderer) {
-            ipcRenderer.on('current-version', (_: any, version: string) => {
-                setCurrentVersion(version);
+            ipcRenderer.on('update-available', (_: any, version: string) => {
+                setUpdateVersion(version);
+            });
+            ipcRenderer.on('update-progress', (_: any, percent: number) => {
+                setDownloadProgress(Math.round(percent));
             });
         }
     }, []);
 
     return (
-        <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 relative">
+            {/* Barra de progreso de actualización sutil visible desde el inicio */}
+            {downloadProgress !== null && (
+                <div className="fixed top-0 left-0 w-full h-1 bg-slate-100 overflow-hidden z-50">
+                    <div 
+                        className="h-full bg-blue-600 transition-all duration-300 ease-out shadow-[0_0_10px_rgba(37,99,235,0.5)]"
+                        style={{ width: `${downloadProgress}%` }}
+                    />
+                    <div className="absolute top-1 left-1/2 -translate-x-1/2 bg-blue-600 text-white text-[8px] font-black px-2 py-0.5 rounded-b-md shadow-sm border border-t-0 border-blue-500 flex items-center gap-1">
+                        <DownloadCloud className="h-2 w-2 animate-bounce" />
+                        DESCARGANDO VERSIÓN {updateVersion || ''}: {downloadProgress}%
+                    </div>
+                </div>
+            )}
+
             <div className="max-w-md w-full space-y-8 text-center bg-white p-10 rounded-3xl shadow-xl border border-slate-100 relative overflow-hidden">
                 {/* Banner de Versión */}
                 {currentVersion && (
