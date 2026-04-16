@@ -1,7 +1,9 @@
 
 import React from 'react';
+
 import { BarChart3, UserPlus, LogOut } from 'lucide-react';
 import { LOGO_BASE64 } from '../assets/logo';
+import { SyncStatusIndicator } from './SyncStatusIndicator';
 
 interface HeaderProps {
   siteName: string;
@@ -26,7 +28,11 @@ export const Header: React.FC<HeaderProps> = ({ siteName, onOpenReports, onNewCl
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+
+        <div className="flex items-center gap-4">
+          <SyncStatusIndicator />
+          <div className="h-6 w-[1px] bg-slate-200 hidden md:block mx-1"></div>
+          
           <button
             onClick={onNewClient}
             className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-bold transition-all shadow-sm"

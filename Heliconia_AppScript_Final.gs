@@ -53,10 +53,13 @@ function doPost(e) {
       }
 
       var newRow = new Array(headers.length).fill("");
-      newRow[colPolizaIdx] = "'" + targetPoliza; // forzamos string en Sheets
+      newRow[colPolizaIdx] = targetPoliza; // forzamos string en Sheets luego
       if (colNombreIdx != -1) newRow[colNombreIdx] = (data.nombre || "").toUpperCase();
       
       sheet.appendRow(newRow);
+      var lastR = sheet.getLastRow();
+      sheet.getRange(lastR, colPolizaIdx + 1).setNumberFormat("@").setValue(targetPoliza);
+      
       return response("OK: Cliente creado");
 
     } else {
@@ -141,12 +144,14 @@ function doPost(e) {
 
         if (action === 'add_beneficiary') {
           var benNewRow = new Array(benHeaders.length > 0 ? benHeaders.length : 4).fill("");
-          benNewRow[colBenContratoIdx] = "'" + targetBenContrato; // forzar string para evitar conversión
+          benNewRow[colBenContratoIdx] = String(targetBenContrato).replace(/'/g, ""); // quitamos comilla opcional
           if (colBenNombreIdx != -1) benNewRow[colBenNombreIdx] = (data.nombre || "").toUpperCase();
           if (colBenFechaIdx != -1) benNewRow[colBenFechaIdx] = data.fechaNacimiento || "";
           if (colBenEstadoIdx != -1) benNewRow[colBenEstadoIdx] = data.estado || "ACTIVO";
           
           benSheet.appendRow(benNewRow);
+          var bLastRow = benSheet.getLastRow();
+          benSheet.getRange(bLastRow, colBenContratoIdx + 1).setNumberFormat("@");
           return response("OK: Beneficiario agregado");
         }
 
@@ -168,8 +173,14 @@ function doPost(e) {
 
         if (action === 'toggle_beneficiary') {
           if (colBenEstadoIdx != -1) {
-            benSheet.getRange(benRowFoundIdx, colBenEstadoIdx + 1).setValue(data.estado);
-            return response("OK: Estado actualizado");
+            var newStatus = data.estado ? String(data.estado).toUpperCase() : "";
+            
+            if (!newStatus) {
+              var currentStatus = String(benValues[benRowFoundIdx-1][colBenEstadoIdx]).toUpperCase();
+              newStatus = (currentStatus === "ACTIVO") ? "RETIRADA" : "ACTIVO";
+            }
+            benSheet.getRange(benRowFoundIdx, colBenEstadoIdx + 1).setValue(newStatus);
+            return response("OK: Estado actualizado a " + newStatus);
           } else {
              return response("Error: Columna 'ESTADO' no encontrada. Créala en Excel.");
           }

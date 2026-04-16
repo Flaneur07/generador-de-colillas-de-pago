@@ -1,6 +1,7 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, dialog } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { autoUpdater } from 'electron-updater';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -65,4 +66,34 @@ app.on('activate', () => {
     }
 });
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+    createWindow();
+    
+    // Check for updates
+    autoUpdater.checkForUpdatesAndNotify();
+});
+
+autoUpdater.on('update-available', () => {
+    console.log('Update available.');
+});
+
+autoUpdater.on('update-downloaded', (info) => {
+    console.log('Update downloaded');
+    const dialogOpts = {
+        type: 'info' as const,
+        buttons: ['Reiniciar y Actualizar', 'Más tarde'],
+        title: 'Actualización Disponible',
+        message: 'Existe una nueva versión de la aplicación.',
+        detail: `Una nueva versión ha sido descargada. Reinicia la aplicación para aplicar los cambios.`
+    };
+
+    dialog.showMessageBox(dialogOpts).then((returnValue) => {
+        if (returnValue.response === 0) {
+            autoUpdater.quitAndInstall();
+        }
+    });
+});
+
+autoUpdater.on('error', (err) => {
+    console.error('Error in auto-updater.', err);
+});

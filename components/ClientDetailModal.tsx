@@ -2,8 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, User, Calendar, FileText, DollarSign, RefreshCw, CheckCircle2, AlertTriangle, Loader2, Trash2, ShieldCheck } from 'lucide-react';
 import { Client } from '../types';
-import { updatePaymentInCloud, syncActionWithCloud } from '../services/googleSheetsBridge';
-import { fetchBeneficiaries } from '../services/excelService';
+import { supabaseService } from '../services/supabaseService';
 
 interface ClientDetailModalProps {
   isOpen: boolean;
@@ -11,9 +10,7 @@ interface ClientDetailModalProps {
   client: Client | null;
   onSave: (updatedClient: Client) => void;
   onDelete?: (clientId: string) => void;
-  appScriptUrl: string;
-  siteId?: string;
-  spreadsheetId?: string;
+  siteId: string;
 }
 
 const months = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
@@ -26,9 +23,7 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({
   client,
   onSave,
   onDelete,
-  appScriptUrl,
-  siteId,
-  spreadsheetId
+  siteId
 }) => {
   const [formData, setFormData] = useState<Client | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -63,35 +58,27 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({
       setShowAddBen(false);
       setNewBen({ nombre: '', fechaNacimiento: '', estado: 'ACTIVO' });
 
-      // Refrescar beneficiarios desde Sheets al abrir el modal
-      const BENEFICIARY_SITES = ['heliconia', 'sevilla', 'ebejico'];
-      if (spreadsheetId && siteId && BENEFICIARY_SITES.includes(siteId)) {
-        setIsFetchingBens(true);
-        fetchBeneficiaries(spreadsheetId)
-          .then(allBens => {
-            const clientBase = String(client.numeroContrato).replace(/'/g, '').trim().toUpperCase();
-            const linked = allBens.filter(b => {
-              const benFull = String(b.numeroContrato).replace(/'/g, '').trim().toUpperCase();
-              const benBase = benFull.split(/[-–—_]/)[0].trim();
-              return benBase === clientBase && benFull !== clientBase;
-            });
-            setFormData(prev => prev ? { ...prev, beneficiaries: linked } : prev);
-          })
-          .catch(err => console.error('[Modal] Error al refrescar beneficiarios:', err))
-          .finally(() => setIsFetchingBens(false));
-      }
+      // No necesitamos refrescar manualmente aquí si confiamos en la data inicial,
+      // pero si quieres asegurar data fresca de Supabase:
+      setIsFetchingBens(true);
+      supabaseService.getSiteClients(siteId)
+        .then(allClients => {
+          const freshClient = allClients.find(c => c.id === client.id);
+          if (freshClient) setFormData(freshClient);
+        })
+        .finally(() => setIsFetchingBens(false));
     }
   }, [client, isOpen]);
 
   if (!isOpen || !formData) return null;
 
-  const scriptUrl = appScriptUrl;
 
   const handlePaymentChange = (month: string, value: string) => {
     if (!formData) return;
     const numValue = parseInt(value.replace(/\D/g, ''), 10) || 0;
     setModifiedMonths(prev => new Set(prev).add(month));
-    setFormData({ ...formData, payments: { ...formData.payments, [month]: numValue } });
+    const payments = formData.payments || {};
+    setFormData({ ...formData, payments: { ...payments, [month]: numValue } });
     if (syncStatus !== 'idle') setSyncStatus('idle');
   };
 
@@ -99,11 +86,6 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({
     e.preventDefault();
     if (!formData) return;
 
-    if (!scriptUrl) {
-      setSyncStatus('error');
-      setErrorMsg("No hay URL de Google Script configurada. Usa el icono de engranaje.");
-      return;
-    }
 
     setIsSyncing(true);
     setSyncStatus('idle');
@@ -113,32 +95,24 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({
       if (modifiedMonths.size > 0) {
         for (const month of Array.from(modifiedMonths) as string[]) {
           setCurrentSyncingMonth(month);
-          await updatePaymentInCloud(scriptUrl, {
-            poliza: formData.numeroContrato,
-            month: month,
-            value: formData.payments[month] || 0
-          });
-          await new Promise(r => setTimeout(r, 600));
+          await supabaseService.updatePayment(formData.id, month, formData.payments[month] || 0);
         }
       }
 
       // 2. Sincronizar observaciones
       if (isObsModified) {
         setCurrentSyncingMonth("Observaciones");
-        await updatePaymentInCloud(scriptUrl, {
-          poliza: formData.numeroContrato,
-          observaciones: formData.observaciones
-        });
+        await supabaseService.updateObservaciones(formData.id, formData.observaciones);
       }
 
       setSyncStatus('success');
       setTimeout(() => {
         onSave(formData);
         onClose();
-      }, 1500);
+      }, 1000);
     } catch (err: any) {
       setSyncStatus('error');
-      setErrorMsg(err.message || "Error al sincronizar con Excel.");
+      setErrorMsg(err.message || "Error al sincronizar con Supabase.");
       setIsSyncing(false);
     }
   };
@@ -149,18 +123,12 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({
     
     setIsProcessingBen(true);
     try {
-      await syncActionWithCloud(scriptUrl, {
-        action: 'toggle_beneficiary',
-        poliza: formData.numeroContrato,
-        beneficiarioContrato: ben.numeroContrato,
-        estado: newStatus
-      });
-      
+      await supabaseService.updateBeneficiaryStatus(ben.numeroContrato, newStatus);
       const updatedBens = [...formData.beneficiaries];
       updatedBens[benIndex] = { ...ben, estado: newStatus };
       setFormData({ ...formData, beneficiaries: updatedBens });
     } catch (err) {
-      alert("Error al actualizar estado del beneficiario");
+      alert("Error al actualizar estado en Supabase");
     } finally {
       setIsProcessingBen(false);
     }
@@ -173,16 +141,11 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({
     const ben = formData.beneficiaries[benIndex];
     setIsProcessingBen(true);
     try {
-      await syncActionWithCloud(scriptUrl, {
-        action: 'delete_beneficiary',
-        poliza: formData.numeroContrato,
-        beneficiarioContrato: ben.numeroContrato
-      });
-      
+      await supabaseService.deleteBeneficiary(ben.numeroContrato);
       const updatedBens = formData.beneficiaries.filter((_, i) => i !== benIndex);
       setFormData({ ...formData, beneficiaries: updatedBens });
     } catch (err) {
-      alert("Error al eliminar beneficiario");
+      alert("Error al eliminar beneficiario de Supabase");
     } finally {
       setIsProcessingBen(false);
     }
@@ -200,10 +163,8 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({
       const nextSuffix = suffixes.length > 0 ? Math.max(...suffixes) + 1 : 1;
       const nextContrato = `${baseContrato}-${nextSuffix}`;
 
-      await syncActionWithCloud(scriptUrl, {
-        action: 'add_beneficiary',
-        poliza: formData.numeroContrato,
-        beneficiarioContrato: nextContrato,
+      await supabaseService.addBeneficiary(formData.id, {
+        numeroContrato: nextContrato,
         nombre: newBen.nombre,
         fechaNacimiento: newBen.fechaNacimiento,
         estado: newBen.estado
@@ -235,38 +196,14 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({
       alert("Código de validación incorrecto");
       return;
     }
-    if (!scriptUrl) {
-      alert("Configura la URL del Script primero");
-      return;
-    }
 
     setIsDeleting(true);
     try {
-      // 1. Eliminar iterativamente a todos los beneficiarios asociados en la nube
-      if (formData.beneficiaries && formData.beneficiaries.length > 0) {
-        for (const ben of formData.beneficiaries) {
-          try {
-            await syncActionWithCloud(scriptUrl, {
-              action: 'delete_beneficiary',
-              poliza: formData.numeroContrato,
-              beneficiarioContrato: ben.numeroContrato
-            });
-          } catch (e) {
-            console.error("No se pudo eliminar al beneficiario " + ben.numeroContrato, e);
-          }
-        }
-      }
-
-      // 2. Eliminar al cliente principal
-      await syncActionWithCloud(scriptUrl, {
-        action: 'delete',
-        poliza: formData.numeroContrato
-      });
-      
+      await supabaseService.deleteClient(formData.id);
       if (onDelete) onDelete(formData.id);
       onClose();
-    } catch (err) {
-      alert("Error al eliminar de la nube");
+    } catch (err: any) {
+      alert("Error al eliminar de Supabase: " + err.message);
       setIsDeleting(false);
     }
   };
@@ -339,9 +276,13 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({
           )}
 
           {syncStatus === 'success' && (
-            <div className="mb-6 p-4 bg-green-50 border border-green-100 rounded-xl flex items-center gap-3 text-green-700 animate-fade-in">
+            <div className={`mb-6 p-4 ${!navigator.onLine ? 'bg-amber-50 border-amber-100 text-amber-700' : 'bg-green-50 border-green-100 text-green-700'} rounded-xl flex items-center gap-3 animate-fade-in`}>
               <CheckCircle2 className="h-5 w-5 shrink-0" />
-              <div className="text-sm font-bold">¡Guardado con éxito en la nube!</div>
+              <div className="text-sm font-bold">
+                {!navigator.onLine 
+                  ? 'Sin conexión. Se sincronizará al recuperar internet.' 
+                  : '¡Guardado con éxito en la nube!'}
+              </div>
             </div>
           )}
 
@@ -365,7 +306,7 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({
                       <DollarSign className={`absolute left-0 top-1/2 -translate-y-1/2 h-4 w-4 ${modifiedMonths.has(month) ? 'text-amber-500' : 'text-slate-300'}`} />
                       <input
                         type="text"
-                        value={formData.payments[month] || ''}
+                        value={formData.payments?.[month] || ''}
                         onChange={(e) => handlePaymentChange(month, e.target.value)}
                         disabled={isSyncing}
                         className="w-full pl-5 pr-1 py-1.5 text-right text-base font-bold outline-none bg-transparent disabled:opacity-50"
@@ -565,7 +506,7 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({
               disabled={isSyncing}
               className={`px-10 py-3 rounded-xl font-black text-white shadow-lg flex items-center gap-2 transition-all ${isSyncing ? 'bg-blue-400 scale-95' : 'bg-green-600 hover:bg-green-700 hover:scale-105 active:scale-95'}`}
             >
-              {isSyncing ? <RefreshCw className="h-5 w-5 animate-spin" /> : "GUARDAR EN BD"}
+              {isSyncing ? <RefreshCw className="h-5 w-5 animate-spin" /> : "GUARDAR CAMBIOS"}
             </button>
           </div>
         </div>

@@ -2,14 +2,14 @@
 import React, { useState, useMemo } from 'react';
 import { X, UserPlus, Fingerprint, RefreshCw, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { Client } from '../types';
-import { syncActionWithCloud } from '../services/googleSheetsBridge';
+import { supabaseService } from '../services/supabaseService';
 
 interface NewClientModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (client: Client) => void;
   existingClients: Client[];
-  appScriptUrl: string;
+  siteId: string;
 }
 
 export const NewClientModal: React.FC<NewClientModalProps> = ({
@@ -17,7 +17,7 @@ export const NewClientModal: React.FC<NewClientModalProps> = ({
   onClose,
   onSave,
   existingClients,
-  appScriptUrl
+  siteId
 }) => {
   const [nombre, setNombre] = useState('');
   const [poliza, setPoliza] = useState('');
@@ -34,7 +34,6 @@ export const NewClientModal: React.FC<NewClientModalProps> = ({
 
   if (!isOpen) return null;
 
-  const scriptUrl = appScriptUrl;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -49,35 +48,16 @@ export const NewClientModal: React.FC<NewClientModalProps> = ({
       return;
     }
 
-    if (!scriptUrl) {
-      setStatus('error');
-      setErrorMsg("Configura la URL del Script en el icono ⚙️");
-      return;
-    }
 
     setIsSyncing(true);
     setStatus('idle');
     setErrorMsg('');
 
     try {
-      await syncActionWithCloud(scriptUrl, {
-        action: 'create',
-        poliza: poliza.trim(),
-        nombre: nombre.trim()
-      });
-
-      const newClient: Client = {
-        id: `new-${Date.now()}`,
+      const newClient = await supabaseService.createClient(siteId, {
         nombre: nombre.trim(),
-        cedula: poliza.trim(),
-        numeroContrato: poliza.trim(),
-        telefono: '',
-        correo: '',
-        valorCompra: 0,
-        concepto: 'Mensualidad Ene 2026',
-        observaciones: '',
-        payments: {}
-      };
+        numeroContrato: poliza.trim()
+      });
 
       setStatus('success');
       setTimeout(() => {
@@ -86,10 +66,10 @@ export const NewClientModal: React.FC<NewClientModalProps> = ({
         setNombre('');
         setPoliza('');
         setStatus('idle');
-      }, 1500);
+      }, 1000);
     } catch (err: any) {
       setStatus('error');
-      setErrorMsg(err.message || "Error al conectar con Google Sheets.");
+      setErrorMsg(err.message || "Error al conectar con Supabase.");
     } finally {
       setIsSyncing(false);
     }
@@ -158,7 +138,7 @@ export const NewClientModal: React.FC<NewClientModalProps> = ({
           <div className="pt-4 space-y-3">
             {status === 'success' && (
               <div className="p-3 bg-green-50 text-green-700 rounded-lg flex items-center gap-2 font-bold text-sm border border-green-100">
-                <CheckCircle2 className="h-5 w-5" /> ¡Agregado a Google Sheets!
+                <CheckCircle2 className="h-5 w-5" /> ¡Agregado a Supabase!
               </div>
             )}
 
@@ -172,7 +152,7 @@ export const NewClientModal: React.FC<NewClientModalProps> = ({
                 }`}
             >
               {isSyncing ? <RefreshCw className="h-5 w-5 animate-spin" /> : <UserPlus className="h-5 w-5" />}
-              {isDuplicate ? 'PÓLIZA DUPLICADA' : isSyncing ? 'GUARDANDO...' : 'CREAR CLIENTE EN EXCEL'}
+              {isDuplicate ? 'PÓLIZA DUPLICADA' : isSyncing ? 'GUARDANDO...' : 'CREAR CLIENTE EN BASE DE DATOS'}
             </button>
           </div>
         </form>

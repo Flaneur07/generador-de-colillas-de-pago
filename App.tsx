@@ -75,9 +75,7 @@ function App() {
           <section className="max-w-3xl mx-auto">
             <FileUploader
               onDataLoaded={handleDataLoaded}
-              spreadsheetId={selectedSite.spreadsheetId}
-              sheetName={selectedSite.sheetName}
-              appScriptUrl={selectedSite.appScriptUrl}
+              siteId={selectedSite.id}
             />
           </section>
 
@@ -105,9 +103,7 @@ function App() {
         client={editingClient}
         onSave={handleUpdateClient}
         onDelete={handleDeleteClient}
-        appScriptUrl={selectedSite.appScriptUrl}
         siteId={selectedSite.id}
-        spreadsheetId={selectedSite.spreadsheetId}
       />
 
       <NewClientModal
@@ -115,7 +111,7 @@ function App() {
         onClose={() => setIsNewClientOpen(false)}
         onSave={handleAddNewClient}
         existingClients={clients}
-        appScriptUrl={selectedSite.appScriptUrl}
+        siteId={selectedSite.id}
       />
 
       <ReportsModal

@@ -54,13 +54,17 @@ export const ClientList: React.FC<ClientListProps> = ({ clients, selectedClient,
               <th className="px-4 py-3 font-semibold text-slate-900 border-b border-slate-200 w-12">#</th>
               <th className="px-4 py-3 font-semibold text-slate-900 border-b border-slate-200 min-w-[100px]">No. Póliza</th>
               <th className="px-4 py-3 font-semibold text-slate-900 border-b border-slate-200 min-w-[250px]">Apellidos y Nombre</th>
-              <th className="px-4 py-3 font-semibold text-slate-900 border-b border-slate-200">Pago del mes</th>
+              <th className="px-4 py-3 font-semibold text-slate-900 border-b border-slate-200">Pago {new Date().toLocaleString('es-ES', { month: 'short' }).replace('.', '').toUpperCase()}</th>
               <th className="px-4 py-3 font-semibold text-slate-900 border-b border-slate-200">Grupo Familiar</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {filteredClients.length > 0 ? (
               filteredClients.map((client, idx) => {
+                const months = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+                const currentMonthName = months[new Date().getMonth()];
+                const monthlyPayment = client.payments?.[currentMonthName] || 0;
+                
                 const isSelected = selectedClient?.id === client.id;
                 const benCount = client.beneficiaries?.length || 0;
                 
@@ -81,8 +85,8 @@ export const ClientList: React.FC<ClientListProps> = ({ clients, selectedClient,
                     <td className={`px-4 py-3 font-medium ${isSelected ? 'text-blue-700' : 'text-slate-900'}`}>
                       {client.nombre}
                     </td>
-                    <td className={`px-4 py-3 font-bold ${client.valorCompra === 0 ? 'text-slate-300' : 'text-green-700'}`}>
-                      {formatCurrency(client.valorCompra)}
+                    <td className={`px-4 py-3 font-bold ${monthlyPayment === 0 ? 'text-slate-300' : 'text-green-700'}`}>
+                      {formatCurrency(monthlyPayment)}
                     </td>
                     <td className="px-4 py-3">
                       {benCount > 0 ? (

@@ -55,15 +55,20 @@ const processWorksheet = (sheet: XLSX.WorkSheet): Client[] => {
   if (headerRowIdx === -1) headerRowIdx = 0;
 
   const headers = data[headerRowIdx].map(normalizeText);
+
+  // Diagnóstico de columnas detectadas
+  console.log(`[processWorksheet] HeaderRow=${headerRowIdx}, Headers:`, headers);
+
   const idxPoliza = headers.findIndex(h => 
     h === "no poliza" || 
+    h === "contrato" ||
     h.includes("pol") || 
-    h.includes("contrato") ||
-    h.includes("no.") ||
-    h.includes("n.")
+    h.includes("contrato")
   );
   const idxNombre = headers.findIndex(h => h.includes("apellido") || h.includes("nombre") || h.includes("cliente"));
   const idxObs = headers.findIndex(h => h.includes("obs") || h.includes("nota"));
+
+  console.log(`[processWorksheet] idxPoliza=${idxPoliza}, idxNombre=${idxNombre}`);
 
   const monthMap = [
     { key: "Ene", variations: ["ene", "enero"] },
@@ -102,6 +107,11 @@ const processWorksheet = (sheet: XLSX.WorkSheet): Client[] => {
     if (!nombre) continue;
 
     const poliza = String(getVal(idxPoliza)).replace(/'/g, "").trim();
+    // No incluir registros sin número de contrato
+    if (!poliza) {
+      console.warn(`[processWorksheet] Fila ${i} omitida: nombre='${nombre}' pero sin contrato (idxPoliza=${idxPoliza}). Contenido de la fila:`, row);
+      continue;
+    }
     const payments: Record<string, number> = {};
     monthMap.forEach(m => {
       if (monthIndices[m.key] !== undefined) {
@@ -158,7 +168,7 @@ export const fetchBeneficiaries = async (sheetId: string): Promise<Beneficiary[]
     url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&gid=${hgid}&_cb=${Date.now()}`;
   } else if (sheetId === "1OFb8M6XawHArv8KyyxaeYUfpj1gS5vakdvCVrtgY2e8") {
     // Sevilla
-    url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent("Planilla beneficiarios sevilla")}&_cb=${Date.now()}`;
+    url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent("Planilla beneficiarios Sevilla")}&_cb=${Date.now()}`;
   } else if (sheetId === "1MULokQ8jhbjK1Fi1HpWv7YQOh-9yuGpoifHRVvAenu0") {
     // Ebejico: Intentar por nombre primero, si falla usamos GID exacto
     const ebejicoSheetName = encodeURIComponent("Beneficiarios_Ebéjico");
@@ -261,19 +271,17 @@ export const fetchBeneficiaries = async (sheetId: string): Promise<Beneficiary[]
   }
 };
 
-export const syncWithGoogleSheets = async (sheetId: string, targetSheetName: string): Promise<Client[]> => {
-  // Evitamos caché en la petición
-  let url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(targetSheetName)}&_cb=${Date.now()}`;
-  
-  if (sheetId === "1LclqwFBtLqIW2KOq5pWXYY2EIqR95R6IxIjQJLt4X-k" && targetSheetName.includes("2026")) {
-    url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&gid=1985605679&_cb=${Date.now()}`;
-  }
 
+
+export const syncWithGoogleSheets = async (sheetId: string, targetSheetName: string): Promise<Client[]> => {
+  const CACHE_KEY = `cached_clients_${sheetId}`;
+  const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(targetSheetName)}&_cb=${Date.now()}`;
+  
   try {
     const response = await fetch(url);
-    if (!response.ok) throw new Error(`Error de conexión: ${response.status}`);
+    if (!response.ok) throw new Error("No se pudo conectar con Google.");
+    
     const text = await response.text();
-
     if (text.includes("<!doctype html>") || text.includes("google.com/accounts")) {
       throw new Error("La hoja de cálculo es privada o no existe.");
     }
@@ -286,40 +294,39 @@ export const syncWithGoogleSheets = async (sheetId: string, targetSheetName: str
 
     // Relacionar beneficiarios para las sedes que lo soportan
     if (["1LclqwFBtLqIW2KOq5pWXYY2EIqR95R6IxIjQJLt4X-k", "1OFb8M6XawHArv8KyyxaeYUfpj1gS5vakdvCVrtgY2e8", "1MULokQ8jhbjK1Fi1HpWv7YQOh-9yuGpoifHRVvAenu0"].includes(sheetId)) {
-      const beneficiaries = await fetchBeneficiaries(sheetId);
-      
-      clients.forEach(client => {
-        const cleanForMatch = (s: any) => {
-          if (!s) return "";
-          // Eliminar absolutamente todo lo que no sea letra o número (puntos, guiones, comillas, espacios)
-          return String(s).replace(/[^a-zA-Z0-9]/g, "").trim().toUpperCase();
-        };
-        
-        const clientContrato = String(client.numeroContrato).replace(/'/g, "").trim().toUpperCase();
-        // Intentamos baseContrato pero también guardamos el contrato limpio entero
-        const clientBaseContrato = clientContrato.split(/[-–—_]/)[0].trim();
-        const clientMatch = cleanForMatch(clientBaseContrato);
-        
-        client.beneficiaries = beneficiaries.filter(b => {
-          const benFullContrato = String(b.numeroContrato).replace(/'/g, "").trim().toUpperCase();
-          const benBaseContrato = benFullContrato.split(/[-–—_]/)[0].trim();
-          const benMatch = cleanForMatch(benBaseContrato);
+      try {
+        const beneficiaries = await fetchBeneficiaries(sheetId);
+        clients.forEach(client => {
+          const cleanForMatch = (s: any) => {
+            if (!s) return "";
+            return String(s).replace(/[^a-zA-Z0-9]/g, "").trim().toUpperCase();
+          };
           
-          const isSameBase = benMatch === clientMatch && benMatch !== "";
-          const isDifferentFull = benFullContrato !== clientContrato;
-
-          if (isSameBase && isDifferentFull) {
-            console.log(`[Sync] Match encontrado: Titular ${clientMatch} -> Ben ${benMatch} (${benFullContrato})`);
-          }
+          const clientContrato = String(client.numeroContrato).replace(/'/g, "").trim().toUpperCase();
+          const clientBaseContrato = clientContrato.split(/[-–—_]/)[0].trim();
+          const clientMatch = cleanForMatch(clientBaseContrato);
           
-          return isSameBase && isDifferentFull;
+          client.beneficiaries = beneficiaries.filter(b => {
+             const benFullContrato = String(b.numeroContrato).replace(/'/g, "").trim().toUpperCase();
+             const benBaseContrato = benFullContrato.split(/[-–—_]/)[0].trim();
+             const benMatch = cleanForMatch(benBaseContrato);
+             return benMatch === clientMatch && benFullContrato !== clientContrato;
+          });
         });
-      });
-      console.log(`[Sync] Proceso de vinculación finalizado para ${clients.length} clientes`);
+      } catch (benErr) {
+        console.warn("[Sync] No se pudieron cargar beneficiarios (posiblemente offline)", benErr);
+      }
     }
 
+    // Guardar en caché local para uso offline
+    localStorage.setItem(CACHE_KEY, JSON.stringify(clients));
     return clients;
-  } catch (error: any) {
-    throw new Error(error.message || "Error al sincronizar con Google Sheets.");
+  } catch (err: any) {
+    console.warn(`[Sync] Fallo de red. Intentando cargar caché local para ${sheetId}`);
+    const cached = localStorage.getItem(CACHE_KEY);
+    if (cached) {
+      return JSON.parse(cached);
+    }
+    throw new Error(err.message || "Error al sincronizar con Google Sheets.");
   }
 };

@@ -9,8 +9,19 @@ function doPost(e) {
     var sheet = ss.getSheetByName("Planilla Pagos") || ss.getSheets()[0]; 
     if (!sheet) return response("Error: Hoja 'Planilla Pagos' no encontrada");
 
-    var values = sheet.getDataRange().getValues();
+    // Búsqueda robusta de encabezados
+    var values = sheet.getDataRange().getDisplayValues();
+    var headerRowIdx = 0;
     var headers = values[0];
+    
+    for (var r = 0; r < Math.min(15, values.length); r++) {
+      var rowStr = values[r].join(" ").toLowerCase();
+      if ((rowStr.includes("contrato") || rowStr.includes("poliza") || rowStr.includes("póliza")) && (rowStr.includes("nombre") || rowStr.includes("apellido"))) {
+        headerRowIdx = r;
+        headers = values[r];
+        break;
+      }
+    }
     
     var colPolizaIdx = -1;
     var colNombreIdx = -1;
@@ -40,7 +51,7 @@ function doPost(e) {
     if (colPolizaIdx == -1) return response("Error: Columna 'contrato' no encontrada");
 
     if (action === 'create') {
-      for (var r = 1; r < values.length; r++) {
+      for (var r = headerRowIdx + 1; r < values.length; r++) {
         if (String(values[r][colPolizaIdx]).trim() === targetPoliza) {
           return response("Error: El contrato ya existe");
         }
@@ -48,14 +59,17 @@ function doPost(e) {
 
       var newRow = new Array(headers.length).fill("");
       newRow[colPolizaIdx] = targetPoliza;
-      if (colNombreIdx != -1) newRow[colNombreIdx] = data.nombre.toUpperCase();
+      if (colNombreIdx != -1 && data.nombre) newRow[colNombreIdx] = String(data.nombre).toUpperCase();
       
       sheet.appendRow(newRow);
+      var lastR = sheet.getLastRow();
+      sheet.getRange(lastR, colPolizaIdx + 1).setNumberFormat("@").setValue(targetPoliza);
+      
       return response("OK: Cliente creado en Sevilla");
 
     } else {
       var rowFoundIdx = -1;
-      for (var r = 1; r < values.length; r++) {
+      for (var r = headerRowIdx + 1; r < values.length; r++) {
         if (String(values[r][colPolizaIdx]).trim() === targetPoliza) {
           rowFoundIdx = r + 1;
           break;
@@ -143,12 +157,14 @@ function doPost(e) {
 
         if (action === 'add_beneficiary') {
           var newRow = new Array(benHeaders.length).fill("");
-          newRow[colBenContratoIdx] = "'" + targetBenContrato; // Comilla simple fuerza texto puro
-          if (colBenNombreIdx != -1) newRow[colBenNombreIdx] = data.nombre.toUpperCase();
-          if (colBenFechaIdx != -1) newRow[colBenFechaIdx] = data.fechaNacimiento;
+          newRow[colBenContratoIdx] = String(targetBenContrato).replace(/'/g, "");
+          if (colBenNombreIdx != -1) newRow[colBenNombreIdx] = data.nombre ? String(data.nombre).toUpperCase() : "";
+          if (colBenFechaIdx != -1) newRow[colBenFechaIdx] = data.fechaNacimiento || "";
           if (colBenEstadoIdx != -1) newRow[colBenEstadoIdx] = data.estado || "ACTIVO";
           
           benSheet.appendRow(newRow);
+          var bLastRow = benSheet.getLastRow();
+          benSheet.getRange(bLastRow, colBenContratoIdx + 1).setNumberFormat("@");
           return response("OK: Beneficiario agregado");
         }
 
@@ -169,8 +185,14 @@ function doPost(e) {
 
         if (action === 'toggle_beneficiary') {
           if (colBenEstadoIdx != -1) {
-            benSheet.getRange(benRowFoundIdx, colBenEstadoIdx + 1).setValue(data.estado);
-            return response("OK: Estado del beneficiario actualizado");
+            var newStatus = data.estado ? String(data.estado).toUpperCase() : "";
+            
+            if (!newStatus) {
+              var currentStatus = String(benValues[benRowFoundIdx-1][colBenEstadoIdx]).toUpperCase();
+              newStatus = (currentStatus === "ACTIVO") ? "RETIRADA" : "ACTIVO";
+            }
+            benSheet.getRange(benRowFoundIdx, colBenEstadoIdx + 1).setValue(newStatus);
+            return response("OK: Estado del beneficiario actualizado a " + newStatus);
           }
         }
       }
