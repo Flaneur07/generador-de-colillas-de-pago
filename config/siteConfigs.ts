@@ -15,8 +15,8 @@ export const SITES: SiteConfig[] = [
   {
     id: 'ebejico',
     name: 'Ebéjico',
-    orgName: 'ORGANIZACIÓN SERVICIOS FUNERARIOS',
-    address: 'Parque Principal EBÉJICO',
+    orgName: 'LA FE SERVICIOS FUNERARIOS',
+    address: 'EBÉJICO',
     city: 'EBÉJICO',
     nit: '66709954',
     phones: '312 799 83 41 - 304 209 29 53',
@@ -27,8 +27,8 @@ export const SITES: SiteConfig[] = [
   {
     id: 'heliconia',
     name: 'Heliconia',
-    orgName: 'ORGANIZACIÓN LA FE',
-    address: 'Parque Principal HELICONIA',
+    orgName: 'ORGANIZACIÓN SERVICIOS FUNERARIOS',
+    address: 'HELICONIA',
     city: 'HELICONIA',
     nit: '71778450',
     phones: '312 799 83 41 - 304 209 29 53',
@@ -39,8 +39,8 @@ export const SITES: SiteConfig[] = [
   {
     id: 'sevilla',
     name: 'Sevilla',
-    orgName: 'ORGANIZACIÓN SERVICIOS FUNERARIOS',
-    address: 'Parque Principal SEVILLA',
+    orgName: 'LA FE SERVICIOS FUNERARIOS',
+    address: 'SEVILLA',
     city: 'SEVILLA',
     nit: '66709954',
     phones: '312 799 83 41 - 304 209 29 53',

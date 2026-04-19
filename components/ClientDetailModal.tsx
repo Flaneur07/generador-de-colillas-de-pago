@@ -15,7 +15,7 @@ interface ClientDetailModalProps {
 
 const months = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 const DELETE_CODE = "LAFE-SEG-2026";
-const BENEFICIARY_STATES = ['ACTIVO', 'RETIRADA', 'MODIFICACION', 'INACTIVO'];
+const BENEFICIARY_STATES = ['ACTIVO', 'FALLECIDO', 'RETIRADA', 'MODIFICACION', 'INACTIVO'];
 
 export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({
   isOpen,
@@ -370,6 +370,7 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({
                         <div className="flex items-center gap-4">
                           <div className={`p-2 rounded-lg ${
                             (ben.estado || 'ACTIVO').toUpperCase() === 'ACTIVO' ? 'bg-green-100 text-green-700' : 
+                            (ben.estado || 'ACTIVO').toUpperCase() === 'FALLECIDO' ? 'bg-gray-800 text-gray-100' :
                             (ben.estado || 'ACTIVO').toUpperCase() === 'MODIFICACION' ? 'bg-amber-100 text-amber-700' :
                             (ben.estado || 'ACTIVO').toUpperCase() === 'RETIRADA' ? 'bg-red-100 text-red-700' :
                             'bg-slate-200 text-slate-500'
@@ -393,6 +394,7 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({
                             disabled={isProcessingBen}
                             className={`p-1.5 rounded-lg text-[10px] font-black outline-none border transition-all ${
                               (ben.estado || 'ACTIVO').toUpperCase() === 'ACTIVO' ? 'bg-green-50 border-green-200 text-green-700' : 
+                              (ben.estado || 'ACTIVO').toUpperCase() === 'FALLECIDO' ? 'bg-gray-800 border-gray-900 text-white' :
                               (ben.estado || 'ACTIVO').toUpperCase() === 'MODIFICACION' ? 'bg-amber-50 border-amber-200 text-amber-700' :
                               (ben.estado || 'ACTIVO').toUpperCase() === 'RETIRADA' ? 'bg-red-50 border-red-200 text-red-700' :
                               'bg-slate-100 border-slate-200 text-slate-600'

@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { X, BarChart3, Users, DollarSign, Calendar, Search, FileDown } from 'lucide-react';
 import { Client } from '../types';
 import { formatCurrency } from '../utils/currency';
+import * as XLSX from 'xlsx';
 
 interface ReportsModalProps {
   isOpen: boolean;
@@ -52,6 +53,43 @@ export const ReportsModal: React.FC<ReportsModalProps> = ({ isOpen, onClose, cli
       totalCount
     };
   }, [clients, selectedMonth, reportType, searchTerm]);
+
+  const handleExportExcel = () => {
+    const reportLabel = reportType === 'anual' ? 'Anual_2026' : `${selectedMonth}_2026`;
+    const fileName = `Reporte_La_Fe_${reportLabel}.xlsx`;
+
+    // Build rows
+    const rows = reportData.paidClients.map((client) => {
+      const valor = reportType === 'anual'
+        ? months.reduce((sum, m) => sum + (client.payments?.[m] || 0), 0)
+        : (client.payments?.[selectedMonth] || 0);
+      return {
+        'Póliza / Contrato': client.numeroContrato,
+        'Nombre del Cliente': client.nombre,
+        'Valor Pagado': valor,
+      };
+    });
+
+    // Totals row
+    rows.push({
+      'Póliza / Contrato': '',
+      'Nombre del Cliente': `TOTAL (${reportData.totalCount} pagadores)`,
+      'Valor Pagado': reportData.totalAmount,
+    });
+
+    const ws = XLSX.utils.json_to_sheet(rows);
+
+    // Column widths
+    ws['!cols'] = [
+      { wch: 18 },
+      { wch: 40 },
+      { wch: 18 },
+    ];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, reportLabel.replace('_', ' '));
+    XLSX.writeFile(wb, fileName);
+  };
 
   if (!isOpen) return null;
 
@@ -159,8 +197,11 @@ export const ReportsModal: React.FC<ReportsModalProps> = ({ isOpen, onClose, cli
               <h3 className="text-sm font-bold text-slate-700 flex items-center gap-2">
                 Lista de Pagos - {reportType === 'anual' ? 'Año 2026' : `${selectedMonth} 2026`}
               </h3>
-              <button className="text-xs font-bold text-blue-600 flex items-center gap-1 hover:underline">
-                <FileDown className="h-3 w-3" /> Exportar (Próximamente)
+              <button
+                onClick={handleExportExcel}
+                className="text-xs font-bold text-green-700 bg-green-50 hover:bg-green-100 border border-green-200 flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors"
+              >
+                <FileDown className="h-3.5 w-3.5" /> Exportar Excel
               </button>
             </div>
 

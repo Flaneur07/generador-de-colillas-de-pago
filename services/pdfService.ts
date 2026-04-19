@@ -7,177 +7,185 @@ import { LOGO_BASE64 } from '../assets/logo';
 // Internal function to create the PDF document structure
 const createPDFDoc = async (client: Client, siteConfig: SiteConfig, receiptNumber?: string): Promise<jsPDF> => {
   // Configuración para Media Carta (Half Letter): 216mm x 140mm
+  // Layout vertical: header(7→30) + form(34→98) + gap(5) + footer(17) = ~120mm → ~20mm bottom margin
   const doc = new jsPDF({
     orientation: 'landscape',
     unit: 'mm',
     format: [216, 140]
   });
 
-  // Fonts
   doc.setFont("helvetica", "normal");
 
   // Layout Constants
   const pageWidth = 216;
-  const marginX = 15;
-  const contentWidth = 186;
+  const marginX = 12;
+  const contentWidth = 192; // pageWidth - 2*marginX
   const centerX = pageWidth / 2;
 
-  // --- Header ---
+  // ─── HEADER ────────────────────────────────────────────────────────────────
   // A. Logo (Left)
   try {
-    doc.addImage(LOGO_BASE64, 'PNG', marginX, 10, 45, 22);
+    doc.addImage(LOGO_BASE64, 'PNG', marginX, 7, 40, 20);
   } catch (e) {
     console.warn("Logo not found", e);
     doc.setTextColor(34, 139, 34);
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(22);
-    doc.text("LA FE", marginX, 22);
+    doc.setFontSize(20);
+    doc.text("LA FE", marginX, 19);
   }
 
   // B. Company Info (Center)
   doc.setTextColor(0, 0, 0);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(11);
-  doc.text(siteConfig.orgName, centerX + 5, 12, { align: "center" });
+  doc.setFontSize(10);
+  doc.text(siteConfig.orgName, centerX + 5, 11, { align: "center" });
 
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(9);
-  doc.text(`Nit: ${siteConfig.nit} - Régimen Simplificado`, centerX + 5, 17, { align: "center" });
+  doc.setFontSize(8);
+  doc.text(`Nit: ${siteConfig.nit} - Régimen Simplificado`, centerX + 5, 16, { align: "center" });
 
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(10);
-  doc.setTextColor(20, 100, 20); // Dark Green
-  doc.text(siteConfig.city.toUpperCase(), centerX + 5, 23, { align: "center" });
+  doc.setFontSize(9);
+  doc.setTextColor(20, 100, 20);
+  doc.text(siteConfig.city.toUpperCase(), centerX + 5, 21, { align: "center" });
 
-  doc.setFontSize(8);
+  doc.setFontSize(7.5);
   doc.setTextColor(80, 80, 80);
-  doc.text(siteConfig.address.toUpperCase(), centerX + 5, 28, { align: "center" });
+  doc.text(siteConfig.address.toUpperCase(), centerX + 5, 26, { align: "center" });
 
-  // C. Receipt Number (Right)
-  const boxWidth = 42;
-  const boxX = (marginX + contentWidth) - boxWidth;
+  // C. Receipt Number Box (Right)
+  const boxWidth = 40;
+  const boxX = marginX + contentWidth - boxWidth;
   doc.setDrawColor(0, 0, 0);
   doc.setLineWidth(0.6);
-  doc.roundedRect(boxX, 10, boxWidth, 20, 2, 2);
+  doc.roundedRect(boxX, 7, boxWidth, 19, 2, 2);
 
-  doc.setFontSize(7);
+  doc.setFontSize(6.5);
   doc.setTextColor(0, 0, 0);
   doc.setFont("helvetica", "bold");
-  doc.text("RECIBO DE CAJA", boxX + (boxWidth / 2), 15, { align: "center" });
+  doc.text("RECIBO DE CAJA", boxX + boxWidth / 2, 12, { align: "center" });
 
-  doc.setFontSize(16);
-  doc.setTextColor(220, 20, 60); // Crimson Red
+  doc.setFontSize(15);
+  doc.setTextColor(220, 20, 60);
   const displayNum = receiptNumber || "00000";
-  doc.text(`No. ${displayNum}`, boxX + (boxWidth / 2), 24, { align: "center" });
+  doc.text(`No. ${displayNum}`, boxX + boxWidth / 2, 21, { align: "center" });
 
-  // --- Main Form Body ---
-  const startY = 38;
-  const rowHeight = 10;
+  // ─── FORM BODY ─────────────────────────────────────────────────────────────
+  const startY = 32;
+  const rowHeight = 8;
+  const textOffset = 5.4; // vertical center within each row
 
   doc.setDrawColor(0, 0, 0);
   doc.setLineWidth(0.4);
   doc.setTextColor(0, 0, 0);
-  doc.setFontSize(10);
+  doc.setFontSize(9);
 
   // Row 1: Fecha | Valor
   doc.rect(marginX, startY, contentWidth, rowHeight);
   doc.line(marginX + 125, startY, marginX + 125, startY + rowHeight);
-
   doc.setFont("helvetica", "normal");
-  doc.text("FECHA:", marginX + 3, startY + 6.5);
+  doc.text("FECHA:", marginX + 2, startY + textOffset);
   const today = new Date().toLocaleDateString('es-CO');
   doc.setFont("helvetica", "bold");
-  doc.text(today, marginX + 22, startY + 6.5);
-
+  doc.text(today, marginX + 19, startY + textOffset);
   doc.setFont("helvetica", "normal");
-  doc.text("VALOR: $", marginX + 128, startY + 6.5);
+  doc.text("VALOR: $", marginX + 128, startY + textOffset);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(12);
-  doc.text(formatCurrency(client.valorCompra).replace('$', '').trim(), marginX + 148, startY + 6.5);
+  doc.setFontSize(11);
+  doc.text(formatCurrency(client.valorCompra).replace('$', '').trim(), marginX + 148, startY + textOffset);
 
   // Row 2: Recibimos de
-  doc.setFontSize(10);
+  doc.setFontSize(9);
   doc.rect(marginX, startY + rowHeight, contentWidth, rowHeight);
   doc.setFont("helvetica", "normal");
-  doc.text("RECIBIMOS DE:", marginX + 3, startY + rowHeight + 6.5);
+  doc.text("RECIBIMOS DE:", marginX + 2, startY + rowHeight + textOffset);
   doc.setFont("helvetica", "bold");
-  doc.text((client.nombre || "").toUpperCase(), marginX + 35, startY + rowHeight + 6.5);
+  doc.text((client.nombre || "").toUpperCase(), marginX + 32, startY + rowHeight + textOffset);
 
   // Row 3: La suma de
-  doc.rect(marginX, startY + (rowHeight * 2), contentWidth, rowHeight);
+  doc.rect(marginX, startY + rowHeight * 2, contentWidth, rowHeight);
   doc.setFont("helvetica", "normal");
-  doc.text("LA SUMA DE:", marginX + 3, startY + (rowHeight * 2) + 6.5);
+  doc.text("LA SUMA DE:", marginX + 2, startY + rowHeight * 2 + textOffset);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(8.5);
-  doc.text(numberToWords(client.valorCompra).toUpperCase(), marginX + 35, startY + (rowHeight * 2) + 6.5);
+  doc.setFontSize(7.5);
+  doc.text(numberToWords(client.valorCompra).toUpperCase(), marginX + 30, startY + rowHeight * 2 + textOffset);
 
   // Row 4: Por concepto de
-  doc.setFontSize(10);
-  doc.rect(marginX, startY + (rowHeight * 3), contentWidth, rowHeight);
+  doc.setFontSize(9);
+  doc.rect(marginX, startY + rowHeight * 3, contentWidth, rowHeight);
   doc.setFont("helvetica", "normal");
-  doc.text("POR CONCEPTO:", marginX + 3, startY + (rowHeight * 3) + 6.5);
+  doc.text("POR CONCEPTO:", marginX + 2, startY + rowHeight * 3 + textOffset);
   doc.setFont("helvetica", "bold");
   const conceptoFinal = client.concepto || "PAGO DE SERVICIOS FUNERARIOS";
-  doc.text(conceptoFinal.toUpperCase(), marginX + 35, startY + (rowHeight * 3) + 6.5);
+  doc.text(conceptoFinal.toUpperCase(), marginX + 32, startY + rowHeight * 3 + textOffset);
 
-  // Row 5: Contrato Número
-  doc.rect(marginX, startY + (rowHeight * 4), contentWidth, rowHeight);
+  // Row 5: Contrato / Póliza
+  doc.rect(marginX, startY + rowHeight * 4, contentWidth, rowHeight);
   doc.setFont("helvetica", "normal");
-  doc.text("CONTRATO / PÓLIZA:", marginX + 3, startY + (rowHeight * 4) + 6.5);
+  doc.text("CONTRATO / PÓLIZA:", marginX + 2, startY + rowHeight * 4 + textOffset);
   doc.setFont("helvetica", "bold");
-  doc.text(String(client.numeroContrato || ""), marginX + 45, startY + (rowHeight * 4) + 6.5);
+  doc.text(String(client.numeroContrato || ""), marginX + 42, startY + rowHeight * 4 + textOffset);
 
-  // Row 6: Observaciones
-  doc.rect(marginX, startY + (rowHeight * 5), contentWidth, rowHeight * 2);
+  // Rows 6-7: Observaciones (double height = 16mm)
+  doc.rect(marginX, startY + rowHeight * 5, contentWidth, rowHeight * 2);
   doc.setFont("helvetica", "normal");
-  doc.text("OBSERVACIONES:", marginX + 3, startY + (rowHeight * 5) + 6.5);
+  doc.setFontSize(9);
+  doc.setTextColor(0, 0, 0);
+  doc.text("OBSERVACIONES:", marginX + 2, startY + rowHeight * 5 + textOffset);
 
   let obsText = client.observaciones || "";
   if (!obsText) {
     if (client.telefono && client.correo) obsText = `Teléfono: ${client.telefono} - Correo: ${client.correo}`;
     else if (client.telefono) obsText = `Teléfono: ${client.telefono}`;
   }
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(9);
-  doc.setTextColor(60, 60, 60);
-  // Row 7: Beneficiarios (Only if they exist)
-  if (client.beneficiaries && client.beneficiaries.length > 0) {
-    const activeBens = client.beneficiaries.filter(b => (b.estado || 'ACTIVO').toUpperCase() === 'ACTIVO');
-    if (activeBens.length > 0) {
-      doc.rect(marginX, startY + (rowHeight * 7), contentWidth, rowHeight);
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(7.5);
-      doc.setTextColor(100, 100, 100);
-      doc.text("GRUPO FAMILIAR:", marginX + 3, startY + (rowHeight * 7) + 6.5);
-      
-      const benText = `ESTE CONTRATO CUENTA CON ${activeBens.length} ${activeBens.length === 1 ? 'BENEFICIARIO ASOCIADO' : 'BENEFICIARIOS ASOCIADOS'}.`;
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(8);
-      doc.setTextColor(0, 0, 0);
-      doc.text(benText, marginX + 32, startY + (rowHeight * 7) + 6.5);
-    }
+  if (obsText) {
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(60, 60, 60);
+    const wrappedObs = doc.splitTextToSize(obsText, contentWidth - 42);
+    doc.text(wrappedObs, marginX + 36, startY + rowHeight * 5 + textOffset);
   }
 
-  // --- Footer ---
-  const footerY = startY + (rowHeight * 7) + 12;
+  // Row 8: Grupo Familiar (optional)
+  let extraRows = 0;
+  if (client.beneficiaries && client.beneficiaries.length > 0) {
+    extraRows = 1;
+    doc.setTextColor(0, 0, 0);
+    doc.rect(marginX, startY + rowHeight * 7, contentWidth, rowHeight);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(7);
+    doc.setTextColor(100, 100, 100);
+    doc.text("GRUPO FAMILIAR:", marginX + 2, startY + rowHeight * 7 + textOffset);
+    const benText = `ESTE CONTRATO CUENTA CON ${client.beneficiaries.length} ${client.beneficiaries.length === 1 ? 'BENEFICIARIO ASOCIADO' : 'BENEFICIARIOS ASOCIADOS'}.`;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(7.5);
+    doc.setTextColor(0, 0, 0);
+    doc.text(benText, marginX + 30, startY + rowHeight * 7 + textOffset);
+  }
+
+  // ─── FOOTER ────────────────────────────────────────────────────────────────
+  // footerY after 8 rows (or 9 with grupo familiar) + 5mm gap
+  const footerY = startY + rowHeight * 7 + extraRows * rowHeight + 5;
+  const footerH = 17;
 
   doc.setLineWidth(0.5);
   doc.setTextColor(0, 0, 0);
 
-  // Left Box: Contact
-  doc.roundedRect(marginX, footerY, 110, 20, 2, 2);
-  doc.setFontSize(8);
+  // Left Box: Contact info
+  doc.roundedRect(marginX, footerY, 112, footerH, 2, 2);
+  doc.setFontSize(7);
   doc.setFont("helvetica", "bold");
-  doc.text("LÍNEAS DE ATENCIÓN:", marginX + 55, footerY + 7, { align: "center" });
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(10);
-  doc.text(siteConfig.phones, marginX + 55, footerY + 14, { align: "center" });
+  doc.text("LÍNEAS DE ATENCIÓN:", marginX + 56, footerY + 6, { align: "center" });
+  doc.setFontSize(9);
+  doc.text(siteConfig.phones, marginX + 56, footerY + 12.5, { align: "center" });
 
   // Right Box: Signature
-  doc.roundedRect(marginX + 115, footerY, contentWidth - 110 - 5, 20, 2, 2);
-  doc.line(marginX + 125, footerY + 14, marginX + contentWidth - 10, footerY + 14);
-  doc.setFontSize(8);
-  doc.text("FIRMA AUTORIZADA", marginX + 115 + (contentWidth - 110 - 5) / 2, footerY + 18, { align: "center" });
+  const sigBoxX = marginX + 116;
+  const sigBoxW = contentWidth - 116;
+  doc.roundedRect(sigBoxX, footerY, sigBoxW, footerH, 2, 2);
+  doc.line(sigBoxX + 5, footerY + 12, sigBoxX + sigBoxW - 5, footerY + 12);
+  doc.setFontSize(7.5);
+  doc.text("FIRMA AUTORIZADA", sigBoxX + sigBoxW / 2, footerY + 15.5, { align: "center" });
 
   return doc;
 };
@@ -191,11 +199,10 @@ export const generatePaymentSlip = async (client: Client, siteConfig: SiteConfig
 export const printPaymentSlip = async (client: Client, siteConfig: SiteConfig, receiptNumber?: string) => {
   const doc = await createPDFDoc(client, siteConfig, receiptNumber);
 
-  // Use autoPrint and output to blob url for best compatibility with print dialogs
+  // Use blob URL for best print dialog compatibility
   const blob = doc.output('blob');
   const url = URL.createObjectURL(blob);
 
-  // Create an iframe to handle the printing without redirecting the main page
   const iframe = document.createElement('iframe');
   iframe.style.display = 'none';
   iframe.src = url;
@@ -203,7 +210,6 @@ export const printPaymentSlip = async (client: Client, siteConfig: SiteConfig, r
 
   iframe.onload = () => {
     iframe.contentWindow?.print();
-    // Clean up after print dialog is closed (or at least triggered)
     setTimeout(() => {
       document.body.removeChild(iframe);
       URL.revokeObjectURL(url);

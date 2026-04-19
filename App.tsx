@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Header } from './components/Header';
 import { FileUploader } from './components/FileUploader';
 import { ClientList } from './components/ClientList';
@@ -18,13 +18,7 @@ function App() {
   const [isReportsOpen, setIsReportsOpen] = useState(false);
   const [isNewClientOpen, setIsNewClientOpen] = useState(false);
 
-  useEffect(() => {
-    const savedSiteId = localStorage.getItem('selectedSiteId');
-    if (savedSiteId) {
-      const site = SITES.find(s => s.id === savedSiteId);
-      if (site) setSelectedSite(site);
-    }
-  }, []);
+  // Always start at the site selector — no auto-restore from localStorage
 
   const handleSelectSite = (site: SiteConfig) => {
     setSelectedSite(site);
