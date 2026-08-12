@@ -13,10 +13,14 @@ interface ClientListProps {
 export const ClientList: React.FC<ClientListProps> = ({ clients, selectedClient, onSelectClient, onEditClient }) => {
   const [searchTerm, setSearchTerm] = useState('');
 
-  const filteredClients = clients.filter(client => 
-    client.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    String(client.cedula).includes(searchTerm) // Cedula field now holds Poliza
-  );
+  const filteredClients = clients.filter(client => {
+    const term = searchTerm.toLowerCase().trim();
+    return (
+      client.nombre.toLowerCase().includes(term) ||
+      String(client.numeroContrato).toLowerCase().includes(term) ||
+      (client.cedula && String(client.cedula).toLowerCase().includes(term))
+    );
+  });
 
   if (clients.length === 0) return null;
 

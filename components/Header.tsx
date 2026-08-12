@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BarChart3, UserPlus, LogOut, DownloadCloud } from 'lucide-react';
+import { BarChart3, UserPlus, LogOut, DownloadCloud, Building2 } from 'lucide-react';
 import { LOGO_BASE64 } from '../assets/logo';
 import { SyncStatusIndicator } from './SyncStatusIndicator';
 import packageJson from '../package.json';
@@ -12,10 +12,11 @@ interface HeaderProps {
   siteName: string;
   onOpenReports: () => void;
   onNewClient: () => void;
+  onChangeSite: () => void;
   onLogout: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ siteName, onOpenReports, onNewClient, onLogout }) => {
+export const Header: React.FC<HeaderProps> = ({ siteName, onOpenReports, onNewClient, onChangeSite, onLogout }) => {
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
   const [updateVersion, setUpdateVersion] = useState<string | null>(null);
   const currentVersion = packageJson.version;
@@ -87,9 +88,17 @@ export const Header: React.FC<HeaderProps> = ({ siteName, onOpenReports, onNewCl
           </button>
 
           <button
+            onClick={onChangeSite}
+            className="p-2 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors border border-transparent hover:border-amber-100"
+            title="Cambiar Sede"
+          >
+            <Building2 className="h-5 w-5" />
+          </button>
+
+          <button
             onClick={onLogout}
             className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors border border-transparent hover:border-red-100"
-            title="Cerrar Sede"
+            title="Cerrar Sesión"
           >
             <LogOut className="h-5 w-5" />
           </button>

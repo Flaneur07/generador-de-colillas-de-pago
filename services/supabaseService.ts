@@ -2,7 +2,7 @@ import { supabase } from '../lib/supabaseClient';
 import { Client, Beneficiary } from '../types';
 import { supabaseQueueService } from './syncQueueService';
 
-const MONTH_MAP: Record<string, string> = {
+export const MONTH_MAP: Record<string, string> = {
   'Ene': 'ene', 'Feb': 'feb', 'Mar': 'mar', 'Abr': 'abr',
   'May': 'may', 'Jun': 'jun', 'Jul': 'jul', 'Ago': 'ago',
   'Sep': 'sep', 'Oct': 'oct', 'Nov': 'nov', 'Dic': 'dic'
@@ -12,6 +12,18 @@ const REVERSE_MONTH_MAP: Record<string, string> = {
   'ene': 'Ene', 'feb': 'Feb', 'mar': 'Mar', 'abr': 'Abr',
   'may': 'May', 'jun': 'Jun', 'jul': 'Jul', 'ago': 'Ago',
   'sep': 'Sep', 'oct': 'Oct', 'nov': 'Nov', 'dic': 'Dic'
+};
+
+const withTimeout = <T>(promise: PromiseLike<T>, ms: number = 5000): Promise<T> => {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error('Failed to fetch (timeout)'));
+    }, ms);
+    promise.then(
+      (val) => { clearTimeout(timer); resolve(val); },
+      (err) => { clearTimeout(timer); reject(err); }
+    );
+  });
 };
 
 export const supabaseService = {
@@ -44,13 +56,16 @@ export const supabaseService = {
           numeroContrato: b.contract_number,
           nombre: b.full_name,
           fechaNacimiento: b.birth_date || '',
-          estado: b.status || 'ACTIVO'
+          estado: b.status || 'INACTIVO',
+          createdAt: b.created_at,
+          cedula: b.cedula
         }));
 
         return {
           id: row.id,
           nombre: row.full_name,
-          cedula: row.contract_number,
+          cedula: row.cedula,
+          fechaNacimiento: row.birth_date,
           numeroContrato: row.contract_number,
           telefono: '',
           correo: '',
@@ -58,7 +73,8 @@ export const supabaseService = {
           concepto: 'Mensualidad 2026',
           observaciones: row.observaciones || '',
           payments,
-          beneficiaries
+          beneficiaries,
+          createdAt: row.created_at
         };
       });
 
@@ -100,7 +116,8 @@ export const supabaseService = {
           merged.push({
             id: action.clientId,
             nombre: payload.full_name,
-            cedula: payload.contract_number,
+            cedula: payload.cedula || '',
+            fechaNacimiento: payload.birth_date || '',
             numeroContrato: payload.contract_number,
             telefono: '',
             correo: '',
@@ -126,7 +143,9 @@ export const supabaseService = {
             numeroContrato: b.contract_number,
             nombre: b.full_name,
             fechaNacimiento: b.birth_date,
-            estado: b.status
+            estado: b.status,
+            createdAt: new Date().toISOString(),
+            cedula: b.cedula || ''
           });
         }
       } else if (action.type === 'deleteBeneficiary') {
@@ -137,6 +156,21 @@ export const supabaseService = {
         merged.forEach(c => {
           const b = c.beneficiaries.find(b => b.numeroContrato === action.payload.contract_number);
           if (b) b.estado = action.payload.status;
+        });
+      } else if (action.type === 'updateBeneficiaryCedula' as any) {
+        merged.forEach(c => {
+          const b = c.beneficiaries.find(b => b.numeroContrato === action.payload.contract_number);
+          if (b) b.cedula = action.payload.cedula;
+        });
+      } else if (action.type === 'updateBeneficiaryName' as any) {
+        merged.forEach(c => {
+          const b = c.beneficiaries.find(b => b.numeroContrato === action.payload.contract_number);
+          if (b) b.nombre = action.payload.name;
+        });
+      } else if (action.type === 'updateBeneficiaryBirthDate' as any) {
+        merged.forEach(c => {
+          const b = c.beneficiaries.find(b => b.numeroContrato === action.payload.contract_number);
+          if (b) b.fechaNacimiento = action.payload.birth_date;
         });
       }
     }
@@ -151,6 +185,8 @@ export const supabaseService = {
     const dbObj: any = {
       site_id: siteId,
       contract_number: String(client.numeroContrato || '').trim(),
+      cedula: String(client.cedula || '').trim(),
+      birth_date: client.fechaNacimiento || '',
       full_name: (client.nombre || '').toUpperCase(),
       observaciones: client.observaciones || ''
     };
@@ -176,7 +212,8 @@ export const supabaseService = {
         return {
           id: tempId,
           nombre: dbObj.full_name,
-          cedula: dbObj.contract_number,
+          cedula: dbObj.cedula,
+          fechaNacimiento: dbObj.birth_date,
           numeroContrato: dbObj.contract_number,
           telefono: '',
           correo: '',
@@ -196,23 +233,22 @@ export const supabaseService = {
   },
 
   /**
-   * Actualiza un pago mensual
+   * Actualiza múltiples campos de un cliente (Pagos, Observaciones, etc.) en una sola petición
    */
-  async updatePayment(clientId: string, month: string, value: number) {
-    const dbMonth = MONTH_MAP[month];
-    if (!dbMonth) throw new Error(`Mes inválido: ${month}`);
-
+  async updateClient(clientId: string, updates: Record<string, any>) {
     try {
-      const { error } = await supabase
-        .from('clients')
-        .update({ [dbMonth]: value })
-        .eq('id', clientId);
+      const { error } = await withTimeout(
+        supabase
+          .from('clients')
+          .update(updates)
+          .eq('id', clientId)
+      );
 
       if (error) throw error;
     } catch (error: any) {
       if (!navigator.onLine || error.message?.includes('Failed to fetch')) {
-        console.warn("[Supabase] Guardando pago en cola offline");
-        supabaseQueueService.enqueue('updatePayment', clientId, { month: dbMonth, value });
+        console.warn("[Supabase] Guardando actualización en cola offline");
+        supabaseQueueService.enqueue('updateClient' as any, clientId, { updates });
       } else {
         throw error;
       }
@@ -220,24 +256,19 @@ export const supabaseService = {
   },
 
   /**
+   * Actualiza un pago mensual (mantenido por compatibilidad)
+   */
+  async updatePayment(clientId: string, month: string, value: number) {
+    const dbMonth = MONTH_MAP[month];
+    if (!dbMonth) throw new Error(`Mes inválido: ${month}`);
+    return this.updateClient(clientId, { [dbMonth]: value });
+  },
+
+  /**
    * Actualiza observaciones
    */
   async updateObservaciones(clientId: string, observations: string) {
-    try {
-      const { error } = await supabase
-        .from('clients')
-        .update({ observaciones: observations })
-        .eq('id', clientId);
-
-      if (error) throw error;
-    } catch (error: any) {
-      if (!navigator.onLine || error.message?.includes('Failed to fetch')) {
-        console.warn("[Supabase] Guardando observaciones en cola offline");
-        supabaseQueueService.enqueue('updateObservaciones', clientId, { observaciones: observations });
-      } else {
-        throw error;
-      }
-    }
+    return this.updateClient(clientId, { observaciones: observations });
   },
 
   /**
@@ -245,10 +276,12 @@ export const supabaseService = {
    */
   async deleteClient(clientId: string) {
     try {
-      const { error } = await supabase
-        .from('clients')
-        .delete()
-        .eq('id', clientId);
+      const { error } = await withTimeout(
+        supabase
+          .from('clients')
+          .delete()
+          .eq('id', clientId)
+      );
 
       if (error) throw error;
     } catch (error: any) {
@@ -270,13 +303,16 @@ export const supabaseService = {
       contract_number: beneficiary.numeroContrato,
       full_name: (beneficiary.nombre || '').toUpperCase(),
       birth_date: beneficiary.fechaNacimiento,
-      status: beneficiary.estado || 'ACTIVO'
+      status: beneficiary.estado || 'INACTIVO',
+      cedula: beneficiary.cedula || ''
     };
 
     try {
-      const { error } = await supabase
-        .from('beneficiaries')
-        .insert(dbObj);
+      const { error } = await withTimeout(
+        supabase
+          .from('beneficiaries')
+          .insert(dbObj)
+      );
 
       if (error) throw error;
     } catch (error: any) {
@@ -294,10 +330,12 @@ export const supabaseService = {
    */
   async deleteBeneficiary(beneficiaryContrato: string) {
     try {
-      const { error } = await supabase
-        .from('beneficiaries')
-        .delete()
-        .eq('contract_number', beneficiaryContrato);
+      const { error } = await withTimeout(
+        supabase
+          .from('beneficiaries')
+          .delete()
+          .eq('contract_number', beneficiaryContrato)
+      );
 
       if (error) throw error;
     } catch (error: any) {
@@ -315,16 +353,87 @@ export const supabaseService = {
    */
   async updateBeneficiaryStatus(beneficiaryContrato: string, status: string) {
     try {
-      const { error } = await supabase
-        .from('beneficiaries')
-        .update({ status: status.toUpperCase() })
-        .eq('contract_number', beneficiaryContrato);
+      const { error } = await withTimeout(
+        supabase
+          .from('beneficiaries')
+          .update({ status: status.toUpperCase() })
+          .eq('contract_number', beneficiaryContrato)
+      );
 
       if (error) throw error;
     } catch (error: any) {
       if (!navigator.onLine || error.message?.includes('Failed to fetch')) {
         console.warn("[Supabase] Guardando actualización de estado env cola offline");
         supabaseQueueService.enqueue('updateBeneficiaryStatus', '', { contract_number: beneficiaryContrato, status: status.toUpperCase() });
+      } else {
+        throw error;
+      }
+    }
+  },
+
+  /**
+   * Actualiza la cédula de un beneficiario
+   */
+  async updateBeneficiaryCedula(beneficiaryContrato: string, cedula: string) {
+    try {
+      const { error } = await withTimeout(
+        supabase
+          .from('beneficiaries')
+          .update({ cedula: cedula })
+          .eq('contract_number', beneficiaryContrato)
+      );
+
+      if (error) throw error;
+    } catch (error: any) {
+      if (!navigator.onLine || error.message?.includes('Failed to fetch')) {
+        console.warn("[Supabase] Guardando actualización de cédula env cola offline");
+        supabaseQueueService.enqueue('updateBeneficiaryCedula' as any, '', { contract_number: beneficiaryContrato, cedula: cedula });
+      } else {
+        throw error;
+      }
+    }
+  },
+
+  /**
+   * Actualiza el nombre de un beneficiario
+   */
+  async updateBeneficiaryName(beneficiaryContrato: string, name: string) {
+    try {
+      const { error } = await withTimeout(
+        supabase
+          .from('beneficiaries')
+          .update({ full_name: name.toUpperCase() })
+          .eq('contract_number', beneficiaryContrato)
+      );
+
+      if (error) throw error;
+    } catch (error: any) {
+      if (!navigator.onLine || error.message?.includes('Failed to fetch')) {
+        console.warn("[Supabase] Guardando actualización de nombre en cola offline");
+        supabaseQueueService.enqueue('updateBeneficiaryName' as any, '', { contract_number: beneficiaryContrato, name: name.toUpperCase() });
+      } else {
+        throw error;
+      }
+    }
+  },
+
+  /**
+   * Actualiza la fecha de nacimiento de un beneficiario
+   */
+  async updateBeneficiaryBirthDate(beneficiaryContrato: string, birthDate: string) {
+    try {
+      const { error } = await withTimeout(
+        supabase
+          .from('beneficiaries')
+          .update({ birth_date: birthDate })
+          .eq('contract_number', beneficiaryContrato)
+      );
+
+      if (error) throw error;
+    } catch (error: any) {
+      if (!navigator.onLine || error.message?.includes('Failed to fetch')) {
+        console.warn("[Supabase] Guardando actualización de fecha nac. en cola offline");
+        supabaseQueueService.enqueue('updateBeneficiaryBirthDate' as any, '', { contract_number: beneficiaryContrato, birth_date: birthDate });
       } else {
         throw error;
       }
@@ -343,7 +452,10 @@ export const supabaseService = {
   
     for (const item of queue) {
       try {
-        if (item.type === 'updatePayment') {
+        if (item.type === 'updateClient' as any) {
+          const { error } = await supabase.from('clients').update(item.payload.updates).eq('id', item.clientId);
+          if (error) throw error;
+        } else if (item.type === 'updatePayment') {
           const { error } = await supabase.from('clients').update({ [item.payload.month]: item.payload.value }).eq('id', item.clientId);
           if (error) throw error;
         } else if (item.type === 'updateObservaciones') {
@@ -364,10 +476,30 @@ export const supabaseService = {
         } else if (item.type === 'updateBeneficiaryStatus') {
           const { error } = await supabase.from('beneficiaries').update({ status: item.payload.status }).eq('contract_number', item.payload.contract_number);
           if (error) throw error;
+        } else if (item.type === 'updateBeneficiaryCedula' as any) {
+          const { error } = await supabase.from('beneficiaries').update({ cedula: item.payload.cedula }).eq('contract_number', item.payload.contract_number);
+          if (error) throw error;
+        } else if (item.type === 'updateBeneficiaryName' as any) {
+          const { error } = await supabase.from('beneficiaries').update({ full_name: item.payload.name }).eq('contract_number', item.payload.contract_number);
+          if (error) throw error;
+        } else if (item.type === 'updateBeneficiaryBirthDate' as any) {
+          const { error } = await supabase.from('beneficiaries').update({ birth_date: item.payload.birth_date }).eq('contract_number', item.payload.contract_number);
+          if (error) throw error;
+        } else if (item.type === 'setPaymentHistory' as any) {
+          await supabase.from('payment_history').delete().eq('client_id', item.clientId).eq('month', item.payload.month);
+          if (item.payload.amount > 0) {
+            const { error } = await supabase.from('payment_history').insert({
+              client_id: item.clientId,
+              site_id: item.payload.siteId,
+              month: item.payload.month,
+              amount: item.payload.amount
+            });
+            if (error) throw error;
+          }
         }
         
-        supabaseQueueService.dequeue(item.id);
         successCount++;
+        supabaseQueueService.dequeue(item.id);
         // Pausa breve para evitar saturar el rate limit
         await new Promise(r => setTimeout(r, 200));
       } catch (e: any) {
@@ -378,5 +510,68 @@ export const supabaseService = {
     }
   
     return { processed: successCount, total: queue.length };
+  },
+
+  /**
+   * Actualiza o elimina el historial de un pago (si es 0 se borra para que no salga en el reporte diario)
+   */
+  async setPaymentHistory(clientId: string, siteId: string, month: string, amount: number) {
+    try {
+      // Siempre borramos el registro anterior para este mes y cliente para evitar duplicados o para limpiar si el pago bajó a 0
+      await withTimeout(
+        supabase.from('payment_history')
+          .delete()
+          .eq('client_id', clientId)
+          .eq('month', month)
+      );
+
+      if (amount <= 0) return; // Si es 0, ya lo borramos, no hacemos insert
+      
+      const payload = {
+        client_id: clientId,
+        site_id: siteId,
+        month,
+        amount
+      };
+
+      const { error } = await withTimeout(
+        supabase.from('payment_history').insert(payload)
+      );
+      if (error) throw error;
+    } catch (error: any) {
+      if (!navigator.onLine || error.message?.includes('Failed to fetch')) {
+        console.warn("[Supabase] Guardando actualización de historial en cola offline");
+        supabaseQueueService.enqueue('setPaymentHistory' as any, clientId, { siteId, month, amount });
+      } else {
+        throw error;
+      }
+    }
+  },
+
+  /**
+   * Obtiene los pagos realizados en un día específico
+   */
+  async getDailyPayments(siteId: string, dateStr: string) {
+    if (!navigator.onLine) {
+      console.warn("Offline: No se puede obtener reporte diario.");
+      return [];
+    }
+    
+    // dateStr format: YYYY-MM-DD
+    const startOfDay = `${dateStr}T00:00:00Z`;
+    const endOfDay = `${dateStr}T23:59:59Z`;
+
+    const { data, error } = await supabase
+      .from('payment_history')
+      .select('*')
+      .eq('site_id', siteId)
+      .gte('created_at', startOfDay)
+      .lte('created_at', endOfDay);
+
+    if (error) {
+      console.error("Error obteniendo pagos diarios:", error);
+      return [];
+    }
+    return data || [];
   }
 };

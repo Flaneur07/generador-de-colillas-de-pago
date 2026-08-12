@@ -20,7 +20,10 @@ export const NewClientModal: React.FC<NewClientModalProps> = ({
   siteId
 }) => {
   const [nombre, setNombre] = useState('');
+  const [cedula, setCedula] = useState('');
+  const [fechaNacimiento, setFechaNacimiento] = useState('');
   const [poliza, setPoliza] = useState('');
+  const [observaciones, setObservaciones] = useState('');
   const [isSyncing, setIsSyncing] = useState(false);
   const [status, setStatus] = useState<'idle' | 'success' | 'error' | 'duplicate'>('idle');
   const [errorMsg, setErrorMsg] = useState('');
@@ -56,7 +59,10 @@ export const NewClientModal: React.FC<NewClientModalProps> = ({
     try {
       const newClient = await supabaseService.createClient(siteId, {
         nombre: nombre.trim(),
-        numeroContrato: poliza.trim()
+        numeroContrato: poliza.trim(),
+        cedula: cedula.trim(),
+        fechaNacimiento: fechaNacimiento.trim(),
+        observaciones: observaciones.trim()
       });
 
       setStatus('success');
@@ -64,7 +70,10 @@ export const NewClientModal: React.FC<NewClientModalProps> = ({
         onSave(newClient);
         onClose();
         setNombre('');
+        setCedula('');
+        setFechaNacimiento('');
         setPoliza('');
+        setObservaciones('');
         setStatus('idle');
       }, 1000);
     } catch (err: any) {
@@ -109,6 +118,43 @@ export const NewClientModal: React.FC<NewClientModalProps> = ({
           </div>
 
           <div>
+            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Cédula (Opcional)</label>
+            <input
+              type="text"
+              value={cedula}
+              onChange={(e) => setCedula(e.target.value)}
+              placeholder="Número de documento"
+              disabled={isSyncing}
+              className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-green-500 outline-none font-medium disabled:opacity-50"
+            />
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Fecha de Nacimiento (Opcional)</label>
+            <input
+              type="text"
+              value={fechaNacimiento}
+              onChange={(e) => {
+                let val = e.target.value.replace(/\D/g, '');
+                if (val.length > 8) val = val.substring(0, 8);
+                
+                let formatted = val;
+                if (val.length > 2) {
+                  formatted = val.substring(0, 2) + '/' + val.substring(2);
+                }
+                if (val.length > 4) {
+                  formatted = formatted.substring(0, 5) + '/' + formatted.substring(5);
+                }
+                
+                setFechaNacimiento(formatted);
+              }}
+              placeholder="DD/MM/AÑO"
+              disabled={isSyncing}
+              className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-green-500 outline-none font-medium font-mono disabled:opacity-50"
+            />
+          </div>
+
+          <div>
             <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Número de Póliza</label>
             <div className="relative">
               <Fingerprint className={`absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 ${isDuplicate ? 'text-red-500' : 'text-slate-300'}`} />
@@ -133,6 +179,18 @@ export const NewClientModal: React.FC<NewClientModalProps> = ({
                 <AlertTriangle className="h-3 w-3" /> Este cliente ya existe. Debes elegir otro N° de póliza.
               </p>
             )}
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Observaciones (Opcional)</label>
+            <textarea
+              value={observaciones}
+              onChange={(e) => setObservaciones(e.target.value)}
+              placeholder="Notas, acuerdos o recordatorios..."
+              disabled={isSyncing}
+              rows={2}
+              className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-green-500 outline-none font-medium disabled:opacity-50 resize-none text-sm"
+            />
           </div>
 
           <div className="pt-4 space-y-3">

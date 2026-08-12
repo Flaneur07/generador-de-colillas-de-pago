@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Client } from '../types';
-import { Download, Printer, Calendar } from 'lucide-react';
+import { Download, Printer, Calendar, Image } from 'lucide-react';
 import { formatCurrency, numberToWords } from '../utils/currency';
 import { generatePaymentSlip, printPaymentSlip } from '../services/pdfService';
 import { SiteConfig } from '../config/siteConfigs';
 import { LOGO_BASE64 } from '../assets/logo';
+import html2canvas from 'html2canvas-pro';
 
 interface PDFPreviewProps {
   client: Client | null;
@@ -14,7 +15,9 @@ interface PDFPreviewProps {
 const months = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 
 export const PDFPreview: React.FC<PDFPreviewProps> = ({ client, siteConfig }) => {
-  const [selectedMonth, setSelectedMonth] = useState<string>("");
+  const receiptRef = useRef<HTMLDivElement>(null);
+  const [selectedMonths, setSelectedMonths] = useState<string[]>([]);
+  const [isMultiSelect, setIsMultiSelect] = useState<boolean>(false);
   const [isAnualSelected, setIsAnualSelected] = useState<boolean>(false);
   const [receiptNumber, setReceiptNumber] = useState<string>("00000");
 
@@ -22,8 +25,9 @@ export const PDFPreview: React.FC<PDFPreviewProps> = ({ client, siteConfig }) =>
     if (client) {
       const currentMonthIdx = new Date().getMonth();
       const currentMonthKey = months[currentMonthIdx];
-      setSelectedMonth(currentMonthKey);
+      setSelectedMonths([currentMonthKey]);
       setIsAnualSelected(false);
+      setIsMultiSelect(false);
       // Generate a random-ish starting number if empty
       if (!receiptNumber || receiptNumber === "00000") {
         const randomNum = Math.floor(10000 + Math.random() * 90000).toString();
@@ -52,11 +56,28 @@ export const PDFPreview: React.FC<PDFPreviewProps> = ({ client, siteConfig }) =>
 
   const selectedValue = isAnualSelected
     ? months.reduce((sum, m) => sum + (client.payments?.[m] || 0), 0)
-    : (client.payments?.[selectedMonth] || 0);
+    : selectedMonths.reduce((sum, m) => sum + (client.payments?.[m] || 0), 0);
 
   const selectedConcept = isAnualSelected
     ? "PAGO PERIODICIDAD ANUAL - 2026"
-    : `Mensualidad ${selectedMonth} 2026`;
+    : (() => {
+        if (selectedMonths.length === 0) return "Ningún mes seleccionado";
+        const sortedSelected = [...selectedMonths].sort((a, b) => months.indexOf(a) - months.indexOf(b));
+        return `Mensualidad ${sortedSelected.join(', ')} 2026`;
+      })();
+
+  const handleModeChange = (multi: boolean) => {
+    setIsMultiSelect(multi);
+    if (!multi) {
+      if (selectedMonths.length > 0) {
+        setSelectedMonths([selectedMonths[0]]);
+      } else {
+        const currentMonthIdx = new Date().getMonth();
+        setSelectedMonths([months[currentMonthIdx]]);
+      }
+      setIsAnualSelected(false);
+    }
+  };
 
   const today = new Date().toLocaleDateString('es-CO');
 
@@ -78,9 +99,56 @@ export const PDFPreview: React.FC<PDFPreviewProps> = ({ client, siteConfig }) =>
     printPaymentSlip(tempClient, siteConfig, receiptNumber);
   };
 
+  const handleDownloadImage = async () => {
+    if (!receiptRef.current) return;
+    const element = receiptRef.current;
+
+    // Crear un clon del elemento para evitar restricciones de tamaño del viewport/pantalla (especialmente en móviles o pantallas angostas)
+    const clone = element.cloneNode(true) as HTMLDivElement;
+
+    // Estilar el clon para que se renderice fuera de pantalla con las dimensiones exactas de Media Carta Horizontal
+    // 216 / 140 = 1.5428 => 700 / 454 = 1.5418
+    clone.style.position = 'absolute';
+    clone.style.left = '-9999px';
+    clone.style.top = '-9999px';
+    clone.style.width = '700px';
+    clone.style.height = '454px';
+    clone.style.maxWidth = 'none';
+    clone.style.display = 'flex';
+    clone.style.flexDirection = 'column';
+    clone.style.justifyContent = 'space-between';
+
+    document.body.appendChild(clone);
+
+    try {
+      const canvas = await html2canvas(clone, {
+        scale: 3, // Mayor resolución para impresión nítida
+        useCORS: true,
+        logging: true,
+        backgroundColor: '#ffffff'
+      });
+      const imgData = canvas.toDataURL('image/png');
+      const link = document.createElement('a');
+      const safeName = client.nombre.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+      link.download = `Recibo_${safeName}.png`;
+      link.href = imgData;
+      link.click();
+    } catch (error) {
+      console.error("Error generating image", error);
+      alert("Error al generar la imagen: " + (error instanceof Error ? error.message : String(error)));
+    } finally {
+      // Remover el clon del DOM
+      if (document.body.contains(clone)) {
+        document.body.removeChild(clone);
+      }
+    }
+  };
+
   const displayObs = client.observaciones
     ? client.observaciones
     : (client.telefono ? `Teléfono: ${client.telefono}` : '') + (client.correo ? ` - Correo: ${client.correo}` : '');
+
+  const hasPayment = selectedValue > 0;
 
   return (
     <>
@@ -90,16 +158,23 @@ export const PDFPreview: React.FC<PDFPreviewProps> = ({ client, siteConfig }) =>
             <h2 className="text-sm font-bold text-slate-700 uppercase tracking-wider">Configurar Recibo</h2>
             <div className="flex gap-2">
               <button
-                onClick={handlePrint}
-                className="flex items-center gap-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold py-2 px-3 rounded shadow transition-colors"
-                title="Imprimir colilla"
+                onClick={handleDownloadImage}
+                disabled={!hasPayment}
+                className={`flex items-center gap-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold py-2 px-3 rounded shadow transition-all ${
+                  !hasPayment ? 'opacity-40 cursor-not-allowed grayscale' : ''
+                } cursor-pointer`}
+                title={hasPayment ? "Descargar colilla en formato PNG" : "No hay pago registrado para este mes"}
               >
-                <Printer className="h-4 w-4" />
-                <span className="hidden sm:inline">IMPRIMIR</span>
+                <Image className="h-4 w-4" />
+                <span className="hidden sm:inline">DESCARGAR IMAGEN</span>
               </button>
               <button
                 onClick={handleDownload}
-                className="flex items-center gap-2 bg-green-700 hover:bg-green-800 text-white text-xs font-bold py-2 px-3 rounded shadow transition-colors"
+                disabled={!hasPayment}
+                className={`flex items-center gap-2 bg-green-700 hover:bg-green-800 text-white text-xs font-bold py-2 px-3 rounded shadow transition-all ${
+                  !hasPayment ? 'opacity-40 cursor-not-allowed grayscale' : ''
+                }`}
+                title={hasPayment ? "Descargar PDF" : "No hay pago registrado para este mes"}
               >
                 <Download className="h-4 w-4" />
                 <span className="hidden sm:inline">DESCARGAR</span>
@@ -121,11 +196,35 @@ export const PDFPreview: React.FC<PDFPreviewProps> = ({ client, siteConfig }) =>
               />
             </div>
 
-            {/* Month Selector Header */}
-            <div className="flex items-end mb-1">
-              <label className="text-[10px] font-bold text-slate-400 uppercase block">
-                Mes de Pago
+            {/* Mode Switcher */}
+            <div className="flex flex-col justify-end">
+              <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">
+                Modo de Selección
               </label>
+              <div className="flex bg-slate-100 p-0.5 rounded border border-slate-200 text-xs">
+                <button
+                  type="button"
+                  onClick={() => handleModeChange(false)}
+                  className={`flex-1 py-1 rounded text-center font-semibold transition-all cursor-pointer ${
+                    !isMultiSelect 
+                      ? 'bg-white text-slate-900 shadow-sm' 
+                      : 'text-slate-500 hover:text-slate-900'
+                  }`}
+                >
+                  Único Mes
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleModeChange(true)}
+                  className={`flex-1 py-1 rounded text-center font-semibold transition-all cursor-pointer ${
+                    isMultiSelect 
+                      ? 'bg-white text-slate-900 shadow-sm' 
+                      : 'text-slate-500 hover:text-slate-900'
+                  }`}
+                >
+                  Varios Meses
+                </button>
+              </div>
             </div>
           </div>
 
@@ -134,17 +233,26 @@ export const PDFPreview: React.FC<PDFPreviewProps> = ({ client, siteConfig }) =>
             {months.map((m) => {
               const val = client.payments?.[m] || 0;
               const hasValue = val > 0;
-              const isSelected = !isAnualSelected && selectedMonth === m;
+              const isSelected = !isAnualSelected && selectedMonths.includes(m);
 
               return (
                 <button
                   key={m}
+                  type="button"
                   onClick={() => {
-                    setSelectedMonth(m);
                     setIsAnualSelected(false);
+                    if (isMultiSelect) {
+                      if (selectedMonths.includes(m)) {
+                        setSelectedMonths(prev => prev.filter(month => month !== m));
+                      } else {
+                        setSelectedMonths(prev => [...prev, m]);
+                      }
+                    } else {
+                      setSelectedMonths([m]);
+                    }
                   }}
                   className={`
-                    px-1 py-1.5 rounded text-[10px] border transition-all flex flex-col items-center justify-center
+                    px-1 py-1.5 rounded text-[10px] border transition-all flex flex-col items-center justify-center cursor-pointer
                     ${isSelected
                       ? 'bg-blue-600 text-white border-blue-600 shadow-md ring-2 ring-blue-100'
                       : hasValue
@@ -161,9 +269,13 @@ export const PDFPreview: React.FC<PDFPreviewProps> = ({ client, siteConfig }) =>
 
             {/* Anual Option */}
             <button
-              onClick={() => setIsAnualSelected(true)}
+              type="button"
+              onClick={() => {
+                setIsAnualSelected(true);
+                setSelectedMonths([]);
+              }}
               className={`
-                px-1 py-1.5 rounded text-[10px] border transition-all flex flex-col items-center justify-center col-span-2
+                px-1 py-1.5 rounded text-[10px] border transition-all flex flex-col items-center justify-center col-span-2 cursor-pointer
                 ${isAnualSelected
                   ? 'bg-amber-600 text-white border-amber-600 shadow-md ring-2 ring-amber-100'
                   : isClientFullYear
@@ -180,7 +292,16 @@ export const PDFPreview: React.FC<PDFPreviewProps> = ({ client, siteConfig }) =>
 
         {/* Paper Receipt Simulation */}
         <div className="flex-1 p-4 overflow-auto flex items-center justify-center bg-slate-200/50">
-          <div className="bg-white p-6 shadow-xl w-full max-w-[600px] text-[10px] sm:text-xs font-sans border border-slate-300 relative">
+          <div ref={receiptRef} className="bg-white p-6 shadow-xl w-full max-w-[600px] text-[10px] sm:text-xs font-sans border border-slate-300 relative overflow-hidden">
+            
+            {/* Watermark for No Payment */}
+            {!hasPayment && (
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-50">
+                <div className="text-red-600/10 text-6xl sm:text-8xl font-black border-[10px] border-red-600/10 p-4 sm:p-8 rounded-[40px] -rotate-[35deg] uppercase select-none tracking-tighter">
+                  Sin Pago
+                </div>
+              </div>
+            )}
 
             {/* Header */}
             <div className="flex justify-between items-start mb-4">

@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { supabase } from './lib/supabaseClient';
 import { Header } from './components/Header';
 import { FileUploader } from './components/FileUploader';
 import { ClientList } from './components/ClientList';
@@ -7,16 +8,55 @@ import { ClientDetailModal } from './components/ClientDetailModal';
 import { ReportsModal } from './components/ReportsModal';
 import { NewClientModal } from './components/NewClientModal';
 import { SiteSelector } from './components/SiteSelector';
+import { AuthScreen } from './components/AuthScreen';
+import { authService } from './services/authService';
 import { Client } from './types';
 import { SITES, SiteConfig } from './config/siteConfigs';
 
 function App() {
   const [selectedSite, setSelectedSite] = useState<SiteConfig | null>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [isCheckingAuth, setIsCheckingAuth] = useState<boolean>(true);
   const [clients, setClients] = useState<Client[]>([]);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [isReportsOpen, setIsReportsOpen] = useState(false);
   const [isNewClientOpen, setIsNewClientOpen] = useState(false);
+
+  // Ping silencioso para mantener vivo el proyecto de Supabase
+  useEffect(() => {
+    const keepAlivePing = async () => {
+      try {
+        await supabase.from('clients').select('id').limit(1);
+        console.log('✅ Ping automático enviado a Supabase (Keep-Alive)');
+      } catch (error) {
+        console.warn('Ping fallido (modo offline probable)', error);
+      }
+    };
+    keepAlivePing();
+  }, []);
+
+  // Verificar sesión activa
+  useEffect(() => {
+    const checkSession = async () => {
+      const session = await authService.getSession();
+      setIsAuthenticated(!!session);
+      setIsCheckingAuth(false);
+    };
+    checkSession();
+
+    const subscription = authService.onAuthStateChange((event, session) => {
+      setIsAuthenticated(!!session);
+      if (!session) {
+        setSelectedSite(null);
+        setClients([]);
+      }
+    });
+
+    return () => {
+      if (subscription) subscription.unsubscribe();
+    };
+  }, []);
 
   // Always start at the site selector — no auto-restore from localStorage
 
@@ -25,10 +65,14 @@ function App() {
     localStorage.setItem('selectedSiteId', site.id);
   };
 
-  const handleLogout = () => {
+  const handleChangeSite = () => {
     setSelectedSite(null);
     localStorage.removeItem('selectedSiteId');
     setClients([]);
+  };
+
+  const handleLogout = async () => {
+    await authService.signOut();
   };
 
   const handleDataLoaded = (data: Client[]) => {
@@ -51,6 +95,18 @@ function App() {
     if (selectedClient?.id === clientId) setSelectedClient(null);
   };
 
+  if (isCheckingAuth) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600"></div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <AuthScreen onLoginSuccess={() => setIsAuthenticated(true)} />;
+  }
+
   if (!selectedSite) {
     return <SiteSelector onSelect={handleSelectSite} />;
   }
@@ -61,6 +117,7 @@ function App() {
         siteName={selectedSite.name}
         onOpenReports={() => setIsReportsOpen(true)}
         onNewClient={() => setIsNewClientOpen(true)}
+        onChangeSite={handleChangeSite}
         onLogout={handleLogout}
       />
 
@@ -112,6 +169,7 @@ function App() {
         isOpen={isReportsOpen}
         onClose={() => setIsReportsOpen(false)}
         clients={clients}
+        siteId={selectedSite.id}
       />
     </div>
   );

@@ -4,12 +4,15 @@ export interface Beneficiary {
   nombre: string;
   fechaNacimiento: string;
   estado: string;
+  createdAt?: string;
+  cedula?: string;
 }
 
 export interface Client {
   id: string; // Generated unique ID for internal tracking
   nombre: string;
   cedula: string | number;
+  fechaNacimiento?: string;
   telefono: string | number;
   correo: string;
   valorCompra: number; // Represents the default or current month value
@@ -18,6 +21,7 @@ export interface Client {
   observaciones: string;
   payments: Record<string, number>; // Stores values for 'ene', 'feb', etc.
   beneficiaries?: Beneficiary[];
+  createdAt?: string;
 }
 
 export interface RawExcelRow {

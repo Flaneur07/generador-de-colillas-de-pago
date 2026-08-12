@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, User, Calendar, FileText, DollarSign, RefreshCw, CheckCircle2, AlertTriangle, Loader2, Trash2, ShieldCheck } from 'lucide-react';
 import { Client } from '../types';
-import { supabaseService } from '../services/supabaseService';
+import { supabaseService, MONTH_MAP } from '../services/supabaseService';
 
 interface ClientDetailModalProps {
   isOpen: boolean;
@@ -35,16 +35,43 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({
 
   // Beneficiarios
   const [showAddBen, setShowAddBen] = useState(false);
-  const [newBen, setNewBen] = useState({ nombre: '', fechaNacimiento: '', estado: 'ACTIVO' });
+  const [newBen, setNewBen] = useState({ nombre: '', fechaNacimiento: '', estado: 'ACTIVO', cedula: '' });
   const [isProcessingBen, setIsProcessingBen] = useState(false);
   const [isFetchingBens, setIsFetchingBens] = useState(false);
+  const [editingClientCedula, setEditingClientCedula] = useState(false);
+  const [tempClientCedula, setTempClientCedula] = useState('');
+  const [editingBenCedulaIdx, setEditingBenCedulaIdx] = useState<number | null>(null);
+  const [tempBenCedula, setTempBenCedula] = useState('');
+
+  // Editar Perfil Titular
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [editProfileNombre, setEditProfileNombre] = useState('');
+  const [editProfileCedula, setEditProfileCedula] = useState('');
+  const [editProfileFechaNacimiento, setEditProfileFechaNacimiento] = useState('');
+
+  // Editar Beneficiario
+  const [editingBenNameIdx, setEditingBenNameIdx] = useState<number | null>(null);
+  const [tempBenName, setTempBenName] = useState('');
+  const [editingBenBirthIdx, setEditingBenBirthIdx] = useState<number | null>(null);
+  const [tempBenBirthDate, setTempBenBirthDate] = useState('');
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [validationCode, setValidationCode] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
+  const isInternalUpdate = React.useRef(false);
 
   useEffect(() => {
+    if (!isOpen) {
+      isInternalUpdate.current = false;
+      return;
+    }
+
     if (client && isOpen) {
+      if (isInternalUpdate.current && formData && formData.id === client.id) {
+        isInternalUpdate.current = false;
+        return;
+      }
+      isInternalUpdate.current = false;
       const clientCopy: Client = JSON.parse(JSON.stringify(client));
       setFormData(clientCopy);
       setSyncStatus('idle');
@@ -56,17 +83,18 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({
       setShowDeleteConfirm(false);
       setValidationCode('');
       setShowAddBen(false);
-      setNewBen({ nombre: '', fechaNacimiento: '', estado: 'ACTIVO' });
-
-      // No necesitamos refrescar manualmente aquí si confiamos en la data inicial,
-      // pero si quieres asegurar data fresca de Supabase:
-      setIsFetchingBens(true);
-      supabaseService.getSiteClients(siteId)
-        .then(allClients => {
-          const freshClient = allClients.find(c => c.id === client.id);
-          if (freshClient) setFormData(freshClient);
-        })
-        .finally(() => setIsFetchingBens(false));
+      setNewBen({ nombre: '', fechaNacimiento: '', estado: 'INACTIVO', cedula: '' });
+      setEditingClientCedula(false);
+      setEditingBenCedulaIdx(null);
+      setIsEditingProfile(false);
+      setEditProfileNombre('');
+      setEditProfileCedula('');
+      setEditProfileFechaNacimiento('');
+      setEditingBenNameIdx(null);
+      setTempBenName('');
+      setEditingBenBirthIdx(null);
+      setTempBenBirthDate('');
+      setIsDeleting(false);
     }
   }, [client, isOpen]);
 
@@ -85,30 +113,64 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData) return;
-
-
+    if (isSyncing) return;
     setIsSyncing(true);
     setSyncStatus('idle');
 
     try {
-      // 1. Sincronizar meses modificados
+      const updates: Record<string, any> = {};
+
+      // 1. Recolectar meses modificados
       if (modifiedMonths.size > 0) {
-        for (const month of Array.from(modifiedMonths) as string[]) {
-          setCurrentSyncingMonth(month);
-          await supabaseService.updatePayment(formData.id, month, formData.payments[month] || 0);
+        modifiedMonths.forEach(month => {
+          const dbMonth = MONTH_MAP[month];
+          if (dbMonth) {
+            updates[dbMonth] = formData.payments[month] || 0;
+          }
+        });
+      }
+
+      // 2. Recolectar observaciones si cambiaron
+      if (isObsModified) {
+        updates.observaciones = formData.observaciones || '';
+      }
+
+      let finalFormData = { ...formData };
+
+      // Catch unsaved client cedula edit
+      if (editingClientCedula && tempClientCedula !== formData.cedula) {
+        updates.cedula = tempClientCedula;
+        finalFormData.cedula = tempClientCedula;
+      }
+
+      // Catch unsaved beneficiary cedula edit
+      if (editingBenCedulaIdx !== null && finalFormData.beneficiaries) {
+        const ben = finalFormData.beneficiaries[editingBenCedulaIdx];
+        if (ben && tempBenCedula !== ben.cedula) {
+          await supabaseService.updateBeneficiaryCedula(ben.numeroContrato, tempBenCedula);
+          const updatedBens = [...finalFormData.beneficiaries];
+          updatedBens[editingBenCedulaIdx] = { ...ben, cedula: tempBenCedula };
+          finalFormData.beneficiaries = updatedBens;
         }
       }
 
-      // 2. Sincronizar observaciones
-      if (isObsModified) {
-        setCurrentSyncingMonth("Observaciones");
-        await supabaseService.updateObservaciones(formData.id, formData.observaciones);
+      // 3. Enviar todo en una sola petición si hay cambios en el cliente
+      if (Object.keys(updates).length > 0) {
+        setCurrentSyncingMonth("Datos");
+        await supabaseService.updateClient(formData.id, updates);
+        
+        // Registrar pagos en historial
+        for (const month of modifiedMonths) {
+          const val = formData.payments[month] || 0;
+          await supabaseService.setPaymentHistory(formData.id, siteId, month, val);
+        }
       }
 
       setSyncStatus('success');
       setTimeout(() => {
-        onSave(formData);
+        onSave(finalFormData);
         onClose();
+        setIsSyncing(false);
       }, 1000);
     } catch (err: any) {
       setSyncStatus('error');
@@ -126,7 +188,10 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({
       await supabaseService.updateBeneficiaryStatus(ben.numeroContrato, newStatus);
       const updatedBens = [...formData.beneficiaries];
       updatedBens[benIndex] = { ...ben, estado: newStatus };
-      setFormData({ ...formData, beneficiaries: updatedBens });
+      const updatedFormData = { ...formData, beneficiaries: updatedBens };
+      setFormData(updatedFormData);
+      isInternalUpdate.current = true;
+      onSave(updatedFormData);
     } catch (err) {
       alert("Error al actualizar estado en Supabase");
     } finally {
@@ -143,7 +208,10 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({
     try {
       await supabaseService.deleteBeneficiary(ben.numeroContrato);
       const updatedBens = formData.beneficiaries.filter((_, i) => i !== benIndex);
-      setFormData({ ...formData, beneficiaries: updatedBens });
+      const updatedFormData = { ...formData, beneficiaries: updatedBens };
+      setFormData(updatedFormData);
+      isInternalUpdate.current = true;
+      onSave(updatedFormData);
     } catch (err) {
       alert("Error al eliminar beneficiario de Supabase");
     } finally {
@@ -167,7 +235,8 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({
         numeroContrato: nextContrato,
         nombre: newBen.nombre,
         fechaNacimiento: newBen.fechaNacimiento,
-        estado: newBen.estado
+        estado: newBen.estado,
+        cedula: newBen.cedula
       });
 
       const newBenObj = {
@@ -175,15 +244,20 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({
         numeroContrato: nextContrato,
         nombre: newBen.nombre,
         fechaNacimiento: newBen.fechaNacimiento,
-        estado: newBen.estado as any
+        estado: newBen.estado as any,
+        cedula: newBen.cedula
       };
 
-      setFormData({
+      const updatedFormData = {
         ...formData,
         beneficiaries: [...(formData.beneficiaries || []), newBenObj]
-      });
+      };
+      setFormData(updatedFormData);
+      isInternalUpdate.current = true;
+      onSave(updatedFormData);
+      
       setShowAddBen(false);
-      setNewBen({ nombre: '', fechaNacimiento: '', estado: 'ACTIVO' });
+      setNewBen({ nombre: '', fechaNacimiento: '', estado: 'INACTIVO', cedula: '' });
     } catch (err) {
       alert("Error al agregar beneficiario");
     } finally {
@@ -204,13 +278,224 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({
       onClose();
     } catch (err: any) {
       alert("Error al eliminar de Supabase: " + err.message);
+    } finally {
       setIsDeleting(false);
+    }
+  };
+
+  const handleSaveClientCedula = async () => {
+    if (!formData) return;
+    try {
+      await supabaseService.updateClient(formData.id, { cedula: tempClientCedula });
+      const updatedFormData = { ...formData, cedula: tempClientCedula };
+      setFormData(updatedFormData);
+      setEditingClientCedula(false);
+      isInternalUpdate.current = true;
+      onSave(updatedFormData);
+    } catch (error) {
+      alert("Error al guardar la cédula");
+    }
+  };
+
+  const handleSaveBenCedula = async (benIndex: number) => {
+    if (!formData || !formData.beneficiaries) return;
+    const ben = formData.beneficiaries[benIndex];
+    try {
+      await supabaseService.updateBeneficiaryCedula(ben.numeroContrato, tempBenCedula);
+      const updatedBens = [...formData.beneficiaries];
+      updatedBens[benIndex] = { ...ben, cedula: tempBenCedula };
+      const updatedFormData = { ...formData, beneficiaries: updatedBens };
+      setFormData(updatedFormData);
+      setEditingBenCedulaIdx(null);
+      isInternalUpdate.current = true;
+      onSave(updatedFormData);
+    } catch (error) {
+      alert("Error al guardar la cédula del beneficiario");
+    }
+  };
+
+  const handleSaveBenBirthDate = async (benIndex: number) => {
+    if (!formData || !formData.beneficiaries) return;
+    const ben = formData.beneficiaries[benIndex];
+    const newBirthDate = tempBenBirthDate.trim();
+    if (newBirthDate === ben.fechaNacimiento) {
+      setEditingBenBirthIdx(null);
+      return;
+    }
+    setIsProcessingBen(true);
+    try {
+      await supabaseService.updateBeneficiaryBirthDate(ben.numeroContrato, newBirthDate);
+      const updatedBens = [...formData.beneficiaries];
+      updatedBens[benIndex] = { ...ben, fechaNacimiento: newBirthDate };
+      const updatedFormData = { ...formData, beneficiaries: updatedBens };
+      setFormData(updatedFormData);
+      setEditingBenBirthIdx(null);
+      isInternalUpdate.current = true;
+      onSave(updatedFormData);
+    } catch (error) {
+      alert("Error al guardar la fecha de nacimiento del beneficiario");
+    } finally {
+      setIsProcessingBen(false);
+    }
+  };
+
+  const handleSaveBenName = async (benIndex: number) => {
+    if (!formData || !formData.beneficiaries || !tempBenName.trim()) return;
+    const nameUpper = tempBenName.trim().toUpperCase();
+    const ben = formData.beneficiaries[benIndex];
+    if (nameUpper === ben.nombre) {
+      setEditingBenNameIdx(null);
+      return;
+    }
+    setIsProcessingBen(true);
+    try {
+      await supabaseService.updateBeneficiaryName(ben.numeroContrato, nameUpper);
+      const updatedBens = [...formData.beneficiaries];
+      updatedBens[benIndex] = { ...ben, nombre: nameUpper };
+      const updatedFormData = { ...formData, beneficiaries: updatedBens };
+      setFormData(updatedFormData);
+      setEditingBenNameIdx(null);
+      isInternalUpdate.current = true;
+      onSave(updatedFormData);
+    } catch (error) {
+      alert("Error al guardar el nombre del beneficiario");
+    } finally {
+      setIsProcessingBen(false);
     }
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl h-[90vh] flex flex-col overflow-hidden relative">
+
+        {isEditingProfile && (
+          <div className="absolute inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-fade-in text-slate-800">
+              <div className="bg-blue-600 text-white p-5 flex justify-between items-center font-bold">
+                <h3 className="flex items-center gap-2">
+                  <User className="h-5 w-5" />
+                  Editar Perfil del Cliente
+                </h3>
+                <button 
+                  type="button"
+                  onClick={() => setIsEditingProfile(false)} 
+                  className="hover:bg-blue-700 p-1 rounded transition-colors cursor-pointer"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              <form 
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  if (!editProfileNombre.trim()) {
+                    alert("El nombre es requerido");
+                    return;
+                  }
+                  setIsProcessingBen(true);
+                  try {
+                    const nameUpper = editProfileNombre.trim().toUpperCase();
+                    const cedulaStr = editProfileCedula.trim();
+                    const birthDateStr = editProfileFechaNacimiento.trim();
+                    const updates = {
+                      full_name: nameUpper,
+                      cedula: cedulaStr,
+                      birth_date: birthDateStr
+                    };
+                    await supabaseService.updateClient(formData.id, updates);
+                    
+                    const updatedFormData = {
+                      ...formData,
+                      nombre: nameUpper,
+                      cedula: cedulaStr,
+                      fechaNacimiento: birthDateStr
+                    };
+                    setFormData(updatedFormData);
+                    isInternalUpdate.current = true;
+                    onSave(updatedFormData);
+                    setIsEditingProfile(false);
+                  } catch (error) {
+                    alert("Error al actualizar el perfil en Supabase");
+                  } finally {
+                    setIsProcessingBen(false);
+                  }
+                }} 
+                className="p-6 space-y-5"
+              >
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Nombre y Apellidos</label>
+                  <input
+                    type="text"
+                    value={editProfileNombre}
+                    onChange={(e) => setEditProfileNombre(e.target.value)}
+                    required
+                    className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none font-medium text-sm text-slate-900 bg-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Cédula</label>
+                  <input
+                    type="text"
+                    value={editProfileCedula}
+                    onChange={(e) => setEditProfileCedula(e.target.value)}
+                    className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none font-medium text-sm text-slate-900 bg-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Fecha de Nacimiento</label>
+                  <input
+                    type="text"
+                    value={editProfileFechaNacimiento}
+                    onChange={(e) => {
+                      let val = e.target.value.replace(/\D/g, '');
+                      if (val.length > 8) val = val.substring(0, 8);
+                      
+                      let formatted = val;
+                      if (val.length > 2) {
+                        formatted = val.substring(0, 2) + '/' + val.substring(2);
+                      }
+                      if (val.length > 4) {
+                        formatted = formatted.substring(0, 5) + '/' + formatted.substring(5);
+                      }
+                      
+                      setEditProfileFechaNacimiento(formatted);
+                    }}
+                    placeholder="DD/MM/AÑO"
+                    className="w-full p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none font-medium text-sm font-mono text-slate-900 bg-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Número de Póliza</label>
+                  <input
+                    type="text"
+                    value={formData.numeroContrato}
+                    disabled
+                    className="w-full p-3 border border-slate-200 rounded-xl outline-none font-mono text-sm text-slate-400 bg-slate-50 cursor-not-allowed"
+                  />
+                </div>
+
+                <div className="pt-4 flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingProfile(false)}
+                    className="flex-1 py-3 border border-slate-200 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-50 transition-all text-center cursor-pointer"
+                  >
+                    CANCELAR
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl text-xs font-black shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    GUARDAR PERFIL
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
 
         {showDeleteConfirm && (
           <div className="absolute inset-0 z-[60] bg-slate-900/95 flex items-center justify-center p-6 text-white animate-fade-in">
@@ -252,19 +537,90 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({
           </div>
         )}
 
-        <div className="bg-slate-900 text-white p-6 flex justify-between items-center shrink-0">
+        <div className="bg-white p-6 border-b border-slate-200 flex justify-between items-center shrink-0">
           <div className="flex items-center gap-4">
-            <div className="bg-blue-600 p-2.5 rounded-xl">
-              <User className="h-6 w-6" />
+            <div className="bg-blue-600 p-3 rounded-2xl">
+              <User className="h-6 w-6 text-white" />
             </div>
-            <div>
-              <h2 className="text-xl font-bold">{formData.nombre}</h2>
-              <span className="text-[10px] bg-slate-700 text-slate-300 px-2 py-0.5 rounded">PÓLIZA: {formData.numeroContrato}</span>
+            <div className="flex-1">
+              <h2 className="text-2xl font-black text-slate-800 uppercase tracking-tight">{formData.nombre}</h2>
+              <div className="flex flex-wrap items-center gap-3 mt-1.5">
+                {editingClientCedula ? (
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="text"
+                      value={tempClientCedula}
+                      onChange={(e) => setTempClientCedula(e.target.value)}
+                      placeholder="Número de Cédula"
+                      className="px-2 py-0.5 rounded text-xs font-bold font-mono border border-blue-400 outline-none w-32"
+                      onKeyDown={(e) => e.key === 'Enter' && handleSaveClientCedula()}
+                      onBlur={() => {
+                        if (tempClientCedula !== formData.cedula) handleSaveClientCedula();
+                        else setEditingClientCedula(false);
+                      }}
+                      autoFocus
+                    />
+                    <button onMouseDown={(e) => e.preventDefault()} onClick={handleSaveClientCedula} className="text-green-600 hover:text-green-700">
+                      <CheckCircle2 className="h-4 w-4" />
+                    </button>
+                    <button onMouseDown={(e) => e.preventDefault()} onClick={() => setEditingClientCedula(false)} className="text-red-500 hover:text-red-600">
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                ) : (
+                  formData.cedula ? (
+                    <span 
+                      onClick={() => { setTempClientCedula(String(formData.cedula)); setEditingClientCedula(true); }}
+                      className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded text-xs font-bold font-mono border border-slate-200 shadow-sm cursor-pointer hover:bg-slate-200 transition-colors"
+                      title="Clic para editar"
+                    >
+                      C.C. {formData.cedula}
+                    </span>
+                  ) : (
+                    <span 
+                      onClick={() => { setTempClientCedula(''); setEditingClientCedula(true); }}
+                      className="bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded text-xs font-bold border border-yellow-300 shadow-sm cursor-pointer hover:bg-yellow-200 transition-colors flex items-center gap-1"
+                      title="Clic para añadir"
+                    >
+                      <AlertTriangle className="h-3 w-3" /> Cédula: Pendiente
+                    </span>
+                  )
+                )}
+                {formData.fechaNacimiento && (
+                  <span className="text-sm font-medium text-slate-500 bg-white px-2 py-0.5 rounded border border-slate-100 shadow-sm flex items-center gap-1">
+                    <Calendar className="h-3 w-3" /> {formData.fechaNacimiento}
+                  </span>
+                )}
+                <span className="text-sm font-medium text-slate-500 bg-white px-2 py-0.5 rounded border border-slate-100 shadow-sm">
+                  Póliza N° <strong className="text-slate-800">{formData.numeroContrato}</strong>
+                </span>
+                {formData.createdAt && (
+                  <span className="text-xs font-medium text-slate-400 flex items-center gap-1">
+                    <Calendar className="h-3 w-3" /> Registrado: {new Date(formData.createdAt).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
-          <button onClick={onClose} disabled={isSyncing} className="p-2 hover:bg-slate-800 rounded-full">
-            <X className="h-6 w-6" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setEditProfileNombre(formData.nombre);
+                setEditProfileCedula(String(formData.cedula || ''));
+                setEditProfileFechaNacimiento(formData.fechaNacimiento || '');
+                setIsEditingProfile(true);
+              }}
+              className="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold py-2 px-3 rounded-xl transition-all border border-slate-200 shadow-sm mr-1 cursor-pointer"
+              title="Editar Nombre y Cédula del Titular"
+            >
+              <User className="h-3.5 w-3.5 text-slate-500" />
+              <span>EDITAR PERFIL</span>
+            </button>
+            <button onClick={onClose} disabled={isSyncing} className="p-2 hover:bg-slate-100 rounded-full transition-colors cursor-pointer">
+              <X className="h-6 w-6 text-slate-400" />
+            </button>
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-8 bg-slate-50/50">
@@ -377,14 +733,144 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({
                           }`}>
                             <User className="h-4 w-4" />
                           </div>
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <p className="text-sm font-bold text-slate-800">{ben.nombre}</p>
+                          <div className="flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              {editingBenNameIdx === idx ? (
+                                <div className="flex items-center gap-1">
+                                  <input
+                                    type="text"
+                                    value={tempBenName}
+                                    onChange={(e) => setTempBenName(e.target.value)}
+                                    placeholder="Nombre"
+                                    className="px-2 py-0.5 rounded text-xs font-bold border border-blue-400 outline-none w-52 uppercase text-slate-800 bg-white"
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') handleSaveBenName(idx);
+                                      if (e.key === 'Escape') setEditingBenNameIdx(null);
+                                    }}
+                                    onBlur={() => {
+                                      if (tempBenName !== ben.nombre) handleSaveBenName(idx);
+                                      else setEditingBenNameIdx(null);
+                                    }}
+                                    autoFocus
+                                  />
+                                  <button onMouseDown={(e) => e.preventDefault()} onClick={() => handleSaveBenName(idx)} className="text-green-600 hover:text-green-700 cursor-pointer">
+                                    <CheckCircle2 className="h-4 w-4" />
+                                  </button>
+                                  <button onMouseDown={(e) => e.preventDefault()} onClick={() => setEditingBenNameIdx(null)} className="text-red-500 hover:text-red-600 cursor-pointer">
+                                    <X className="h-4 w-4" />
+                                  </button>
+                                </div>
+                              ) : (
+                                <p 
+                                  onClick={() => { setTempBenName(ben.nombre); setEditingBenNameIdx(idx); }}
+                                  className="text-sm font-bold text-slate-800 cursor-pointer hover:bg-slate-200 px-1 rounded transition-colors inline-block"
+                                  title="Clic para editar nombre"
+                                >
+                                  {ben.nombre}
+                                </p>
+                              )}
                               <span className="text-[9px] font-black text-slate-400 bg-white border border-slate-200 px-1.5 py-0.5 rounded uppercase">{ben.numeroContrato}</span>
+                              
+                              {editingBenCedulaIdx === idx ? (
+                                <div className="flex items-center gap-1">
+                                  <input
+                                    type="text"
+                                    value={tempBenCedula}
+                                    onChange={(e) => setTempBenCedula(e.target.value)}
+                                    placeholder="Cédula"
+                                    className="px-1.5 py-0.5 rounded text-[9px] font-bold font-mono border border-blue-400 outline-none w-24"
+                                    onKeyDown={(e) => e.key === 'Enter' && handleSaveBenCedula(idx)}
+                                    onBlur={() => {
+                                      if (tempBenCedula !== ben.cedula) handleSaveBenCedula(idx);
+                                      else setEditingBenCedulaIdx(null);
+                                    }}
+                                    autoFocus
+                                  />
+                                  <button onMouseDown={(e) => e.preventDefault()} onClick={() => handleSaveBenCedula(idx)} className="text-green-600 hover:text-green-700">
+                                    <CheckCircle2 className="h-3 w-3" />
+                                  </button>
+                                  <button onMouseDown={(e) => e.preventDefault()} onClick={() => setEditingBenCedulaIdx(null)} className="text-red-500 hover:text-red-600">
+                                    <X className="h-3 w-3" />
+                                  </button>
+                                </div>
+                              ) : (
+                                ben.cedula ? (
+                                  <span 
+                                    onClick={() => { setTempBenCedula(String(ben.cedula)); setEditingBenCedulaIdx(idx); }}
+                                    className="bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded text-[9px] font-bold font-mono border border-slate-200 shadow-sm cursor-pointer hover:bg-slate-200 transition-colors"
+                                    title="Clic para editar"
+                                  >
+                                    C.C. {ben.cedula}
+                                  </span>
+                                ) : (
+                                  <span 
+                                    onClick={() => { setTempBenCedula(''); setEditingBenCedulaIdx(idx); }}
+                                    className="bg-yellow-100 text-yellow-800 px-1.5 py-0.5 rounded text-[9px] font-bold border border-yellow-300 shadow-sm cursor-pointer hover:bg-yellow-200 transition-colors flex items-center gap-1"
+                                    title="Clic para añadir"
+                                  >
+                                    <AlertTriangle className="h-2.5 w-2.5" /> Cédula: Pendiente
+                                  </span>
+                                )
+                              )}
+
+                              {ben.createdAt && (
+                                <span className="text-[9px] text-slate-400 border border-slate-100 px-1.5 py-0.5 rounded bg-slate-50 flex items-center gap-1">
+                                  <Calendar className="h-2.5 w-2.5" /> Registrado: {new Date(ben.createdAt).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })}
+                                </span>
+                              )}
                             </div>
-                            <p className="text-[10px] text-slate-500 flex items-center gap-1">
-                              <Calendar className="h-3 w-3" /> {ben.fechaNacimiento || 'Sin fecha de nacimiento'}
-                            </p>
+                            <div className="flex items-center gap-3 mt-1">
+                              <div className="flex items-center gap-1 text-[10px] text-slate-500">
+                                <Calendar className="h-3 w-3" />
+                                {editingBenBirthIdx === idx ? (
+                                  <div className="flex items-center gap-1">
+                                    <input
+                                      type="text"
+                                      value={tempBenBirthDate}
+                                      onChange={(e) => {
+                                        let val = e.target.value.replace(/\D/g, '');
+                                        if (val.length > 8) val = val.substring(0, 8);
+                                        let formatted = val;
+                                        if (val.length > 2) {
+                                          formatted = val.substring(0, 2) + '/' + val.substring(2);
+                                        }
+                                        if (val.length > 4) {
+                                          formatted = formatted.substring(0, 5) + '/' + formatted.substring(5);
+                                        }
+                                        setTempBenBirthDate(formatted);
+                                      }}
+                                      placeholder="DD/MM/AÑO"
+                                      className="px-1.5 py-0.5 rounded text-[9px] font-bold font-mono border border-blue-400 outline-none w-20"
+                                      onKeyDown={(e) => e.key === 'Enter' && handleSaveBenBirthDate(idx)}
+                                      onBlur={() => {
+                                        if (tempBenBirthDate !== ben.fechaNacimiento) handleSaveBenBirthDate(idx);
+                                        else setEditingBenBirthIdx(null);
+                                      }}
+                                      autoFocus
+                                    />
+                                    <button onMouseDown={(e) => e.preventDefault()} onClick={() => handleSaveBenBirthDate(idx)} className="text-green-600 hover:text-green-700">
+                                      <CheckCircle2 className="h-3 w-3" />
+                                    </button>
+                                    <button onMouseDown={(e) => e.preventDefault()} onClick={() => setEditingBenBirthIdx(null)} className="text-red-500 hover:text-red-600">
+                                      <X className="h-3 w-3" />
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <span 
+                                    onClick={() => { setTempBenBirthDate(ben.fechaNacimiento || ''); setEditingBenBirthIdx(idx); }}
+                                    className="cursor-pointer hover:text-slate-800 hover:bg-slate-200 px-1 rounded transition-colors"
+                                    title="Clic para editar"
+                                  >
+                                    {ben.fechaNacimiento || 'Sin fecha de nacimiento'}
+                                  </span>
+                                )}
+                              </div>
+                              {ben.estado === 'INACTIVO' && ben.createdAt && (new Date().getTime() - new Date(ben.createdAt).getTime()) / (1000 * 3600 * 24) >= 90 && (
+                                <span className="text-[9px] font-bold text-white bg-red-500 px-2 py-0.5 rounded flex items-center gap-1 shadow-sm">
+                                  <AlertTriangle className="h-2 w-2" /> ¡ACTIVAR YA! (Han pasado 3 meses)
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </div>
                         <div className="flex items-center gap-3">
@@ -460,6 +946,16 @@ export const ClientDetailModal: React.FC<ClientDetailModalProps> = ({
                           }}
                           className="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:border-blue-500 font-mono"
                           placeholder="DD / MM / AÑO"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[9px] font-black text-slate-400 uppercase mb-1">Cédula (Opcional)</label>
+                        <input
+                          type="text"
+                          value={newBen.cedula}
+                          onChange={(e) => setNewBen({...newBen, cedula: e.target.value})}
+                          className="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:border-blue-500 font-mono"
+                          placeholder="C.C."
                         />
                       </div>
                     </div>

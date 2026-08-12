@@ -1,0 +1,9 @@
+# Reglas del Proyecto
+
+1. **Permiso para Compilar el Instalador (.exe)**: Siempre debes solicitar permiso y aprobación explícita al usuario en el chat antes de ejecutar cualquier comando de compilación o empaquetado del instalador ejecutable de escritorio (`npm run build:electron` o similar).
+2. **Revisar Historial de Cambios**: Cualquier agente de IA que esté desarrollando en este proyecto DEBE leer y utilizar el archivo `CHANGELOG.md` como contexto inicial. Esto es obligatorio para saber qué se ha modificado últimamente en la aplicación antes de sugerir o realizar nuevos cambios.
+3. **Arquitectura Offline-First**: Toda interacción de escritura, actualización o borrado en la base de datos (Supabase) DEBE obligatoriamente envolverse o integrarse con el sistema de cola offline (`supabaseQueueService`).
+4. **Privacidad y Manejo de Datos Sensibles**: Queda estrictamente prohibido utilizar `console.log()` o sistemas de telemetría no encriptados que expongan nombres, cédulas, números de contrato (pólizas) o fechas de nacimiento de los clientes.
+5. **Coherencia de Interfaz**: Todos los estilos deben implementarse exclusivamente utilizando Tailwind CSS. Se deben preservar los esquemas de color de los estados (Verde, Rojo, Ámbar, Gris) y evitar añadir CSS en línea (`style={{...}}`) a menos que sea un cálculo dinámico imprescindible.
+6. **Integración Segura con el Sistema Operativo**: Cualquier funcionalidad que requiera acceso nativo (guardar reportes PDF, leer Excel, diálogos) debe hacerse a través del puente IPC en Electron. El código de React/Frontend no debe acceder directamente a módulos de Node.js (fs, path).
+7. **Manejo de Fechas y Zonas Horarias**: Cualquier campo de fecha de visualización rápida debe mantener la lógica de enmascaramiento (`DD/MM/AÑO`). Las fechas hacia Supabase deben estructurarse uniformemente para evitar desfases de hora en reportes (UTC vs Local).
